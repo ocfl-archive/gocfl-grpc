@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/je4/utils/v2/pkg/zLogger"
 	"github.com/ocfl-archive/filesystem/pkg/vfsrw"
@@ -20,7 +21,7 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 )
 
-func setupTestGRPCServer(t *testing.T) (client.GocflClient, func()) {
+func setupTestGRPCServer(t *testing.T) (client.GocflClient, *service.GocflService, func()) {
 	out := zerolog.Nop()
 	logger := zLogger.ZLogger(&out)
 
@@ -71,11 +72,11 @@ func setupTestGRPCServer(t *testing.T) (client.GocflClient, func()) {
 		server.Stop()
 	}
 
-	return cl, cleanup
+	return cl, svc, cleanup
 }
 
 func TestGocflServiceLifecycle(t *testing.T) {
-	cl, cleanup := setupTestGRPCServer(t)
+	cl, svc, cleanup := setupTestGRPCServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -246,6 +247,42 @@ func TestGocflServiceLifecycle(t *testing.T) {
 		}
 		if !valResp.GetIsValid() {
 			t.Errorf("Expected valid created object, got invalid: %v, errors: %v", valResp.GetMessage(), valResp.GetErrors())
+		}
+	})
+
+	// 8. Test Shutdown
+	t.Run("Shutdown Disallowed and Allowed", func(t *testing.T) {
+		shutdownCalled := false
+		svc.SetShutdownFunc(func(force bool) {
+			shutdownCalled = true
+		})
+
+		// 8a. Test Shutdown when disallowed (default)
+		svc.SetAllowAPIShutdown(false)
+		_, err := cl.Shutdown(ctx, &pb.ShutdownRequest{
+			Reason: "service unit test disallowed",
+			Force:  false,
+		})
+		if err == nil {
+			t.Errorf("Expected error when shutdown is disallowed, got nil")
+		}
+
+		// 8b. Test Shutdown when allowed
+		svc.SetAllowAPIShutdown(true)
+		shutResp, err := cl.Shutdown(ctx, &pb.ShutdownRequest{
+			Reason: "service unit test allowed",
+			Force:  false,
+		})
+		if err != nil {
+			t.Fatalf("Shutdown failed when allowed: %v", err)
+		}
+		if !shutResp.GetSuccess() {
+			t.Errorf("Expected Shutdown success true, got false")
+		}
+
+		time.Sleep(150 * time.Millisecond)
+		if !shutdownCalled {
+			t.Errorf("Expected shutdown callback to be called")
 		}
 	})
 }

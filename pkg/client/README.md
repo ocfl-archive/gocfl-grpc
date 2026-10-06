@@ -239,6 +239,19 @@ if !valResult.IsValid {
 }
 ```
 
+### 6. `Shutdown` — Gracefully Terminate Server
+
+```go
+shutResp, err := cl.Shutdown(ctx, &pb.ShutdownRequest{
+    Reason: "remote administrative shutdown",
+    Force:  false, // true for immediate termination without waiting for active RPCs
+})
+if err != nil {
+    log.Fatalf("shutdown failed: %v", err)
+}
+fmt.Printf("Server shutdown response: %s (success=%v)\n", shutResp.Message, shutResp.Success)
+```
+
 ---
 
 ## Connection Lifecycle

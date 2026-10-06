@@ -49,6 +49,7 @@ type GocflClient interface {
 	Update(ctx context.Context, req *pb.UpdateRequest, opts ...CallOption) (*pb.UpdateResult, error)
 	Create(ctx context.Context, req *pb.CreateRequest, opts ...CallOption) (*pb.CreateResult, error)
 	Validate(ctx context.Context, req *pb.ValidateRequest, opts ...CallOption) (*pb.ValidateResult, error)
+	Shutdown(ctx context.Context, req *pb.ShutdownRequest, opts ...CallOption) (*pb.ShutdownResponse, error)
 
 	InitStream(ctx context.Context, req *pb.InitRequest, opts ...grpc.CallOption) (pb.GocflService_InitClient, error)
 	AddStream(ctx context.Context, req *pb.AddRequest, opts ...grpc.CallOption) (pb.GocflService_AddClient, error)
@@ -409,4 +410,14 @@ func (c *Client) Validate(ctx context.Context, req *pb.ValidateRequest, opts ...
 		return nil, errors.New("server closed stream without returning a result")
 	}
 	return result, nil
+}
+
+// Shutdown initiates a server shutdown over gRPC.
+func (c *Client) Shutdown(ctx context.Context, req *pb.ShutdownRequest, opts ...CallOption) (*pb.ShutdownResponse, error) {
+	co := &callOptions{}
+	for _, o := range opts {
+		o(co)
+	}
+
+	return c.grpcClient.Shutdown(ctx, req, co.grpcOpts...)
 }

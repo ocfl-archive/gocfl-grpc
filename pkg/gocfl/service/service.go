@@ -39,10 +39,41 @@ type GocflService struct {
 	conf                          *config.GOCFLConfig
 	defaultStorageRootExtensionFS fs.FS
 	defaultObjectExtensionFS      fs.FS
+	shutdownMu                    sync.Mutex
+	shutdownFunc                  func(force bool)
+	allowAPIShutdown              bool
 }
 
 // Option configures a GocflService instance.
 type Option func(*GocflService)
+
+// WithShutdownFunc sets a callback to be invoked when a gRPC shutdown request is received.
+func WithShutdownFunc(fn func(force bool)) Option {
+	return func(s *GocflService) {
+		s.shutdownFunc = fn
+	}
+}
+
+// WithAllowAPIShutdown configures whether remote shutdown requests via gRPC are permitted.
+func WithAllowAPIShutdown(allow bool) Option {
+	return func(s *GocflService) {
+		s.allowAPIShutdown = allow
+	}
+}
+
+// SetAllowAPIShutdown sets or updates the permission for remote API shutdowns.
+func (s *GocflService) SetAllowAPIShutdown(allow bool) {
+	s.shutdownMu.Lock()
+	defer s.shutdownMu.Unlock()
+	s.allowAPIShutdown = allow
+}
+
+// SetShutdownFunc updates or sets the shutdown callback function.
+func (s *GocflService) SetShutdownFunc(fn func(force bool)) {
+	s.shutdownMu.Lock()
+	defer s.shutdownMu.Unlock()
+	s.shutdownFunc = fn
+}
 
 // WithVFS sets a custom virtual filesystem.
 func WithVFS(vfs vfsrw.VFSRW) Option {
@@ -794,4 +825,43 @@ func (s *GocflService) Validate(req *pb.ValidateRequest, stream pb.GocflService_
 			},
 		},
 	})
+}
+
+// Shutdown handles remote requests to terminate the gRPC server.
+func (s *GocflService) Shutdown(ctx context.Context, req *pb.ShutdownRequest) (*pb.ShutdownResponse, error) {
+	s.shutdownMu.Lock()
+	allowed := s.allowAPIShutdown
+	fn := s.shutdownFunc
+	s.shutdownMu.Unlock()
+
+	if !allowed {
+		s.logger.Warn().
+			Str("reason", req.GetReason()).
+			Msg("gRPC shutdown rejected: -allow-api-shutdown is not enabled")
+		return nil, status.Error(codes.PermissionDenied, "gRPC API shutdown is not enabled on this server (enable with -allow-api-shutdown)")
+	}
+
+	reason := req.GetReason()
+	if reason == "" {
+		reason = "remote gRPC shutdown request"
+	}
+	force := req.GetForce()
+
+	s.logger.Info().
+		Str("reason", reason).
+		Bool("force", force).
+		Msg("gRPC server shutdown requested")
+
+	if fn != nil {
+		go func() {
+			// Allow brief window for response to flush to client before closing connections
+			time.Sleep(100 * time.Millisecond)
+			fn(force)
+		}()
+	}
+
+	return &pb.ShutdownResponse{
+		Success: true,
+		Message: fmt.Sprintf("shutdown initiated (force=%v, reason=%q)", force, reason),
+	}, nil
 }

@@ -22,7 +22,11 @@ func startIntegrationServer(t *testing.T) (*bootstrap.Server, string) {
 	require.NoError(t, err)
 
 	cfg.Addr = "127.0.0.1:0"
+	return startIntegrationServerWithConfig(t, cfg)
+}
 
+// startIntegrationServerWithConfig starts a full gRPC server with the given configuration.
+func startIntegrationServerWithConfig(t *testing.T, cfg *bootstrap.Config) (*bootstrap.Server, string) {
 	server, err := bootstrap.NewServer(cfg)
 	require.NoError(t, err)
 	require.NotNil(t, server)
@@ -471,4 +475,86 @@ func TestLiveLogStreamingIntegration(t *testing.T) {
 	}, client.WithCallLogHandler(logHandler))
 	require.NoError(t, err)
 	assert.True(t, valResp.GetIsValid())
+}
+
+// TestServerShutdownIntegration verifies that calling the Shutdown gRPC endpoint behaves correctly based on AllowAPIShutdown.
+func TestServerShutdownIntegration(t *testing.T) {
+	// 1. Verify that shutdown is rejected when AllowAPIShutdown is false (default)
+	t.Run("ShutdownDisallowedByDefault", func(t *testing.T) {
+		cfg, err := bootstrap.LoadConfig("")
+		require.NoError(t, err)
+		cfg.Addr = "127.0.0.1:0"
+		cfg.AllowAPIShutdown = false
+
+		server, addr := startIntegrationServerWithConfig(t, cfg)
+		defer server.GracefulStop()
+
+		cl, err := client.NewClient(addr, client.WithInsecure())
+		require.NoError(t, err)
+		defer func() { _ = cl.Close() }()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		_, err = cl.Shutdown(ctx, &pb.ShutdownRequest{
+			Reason: "unauthorized shutdown test",
+		})
+		require.Error(t, err, "Expected permission error when AllowAPIShutdown is false")
+		assert.Contains(t, err.Error(), "gRPC API shutdown is not enabled")
+	})
+
+	// 2. Verify that shutdown terminates server when AllowAPIShutdown is true
+	t.Run("ShutdownAllowed", func(t *testing.T) {
+		cfg, err := bootstrap.LoadConfig("")
+		require.NoError(t, err)
+		cfg.Addr = "127.0.0.1:0"
+		cfg.AllowAPIShutdown = true
+
+		server, addr := startIntegrationServerWithConfig(t, cfg)
+
+		cl, err := client.NewClient(addr, client.WithInsecure())
+		require.NoError(t, err)
+		defer func() { _ = cl.Close() }()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		// Verify server is functional
+		tempDir := t.TempDir()
+		ocflRoot := filepath.ToSlash(filepath.Join(tempDir, "shutdown_ocfl_root"))
+
+		initResp, err := cl.Init(ctx, &pb.InitRequest{
+			OcflPath:    ocflRoot,
+			OcflVersion: "1.1",
+			Digest:      "sha512",
+		})
+		require.NoError(t, err)
+		require.True(t, initResp.GetSuccess())
+
+		// Request server shutdown via gRPC
+		shutResp, err := cl.Shutdown(ctx, &pb.ShutdownRequest{
+			Reason: "authorized shutdown test",
+			Force:  false,
+		})
+		require.NoError(t, err)
+		require.True(t, shutResp.GetSuccess())
+		assert.Contains(t, shutResp.GetMessage(), "shutdown initiated")
+
+		// Assert server terminates within a short timeout
+		select {
+		case <-server.Done():
+			t.Log("Server shut down cleanly via gRPC call")
+		case <-time.After(5 * time.Second):
+			t.Fatal("Timeout waiting for server to shut down after gRPC Shutdown call")
+		}
+
+		// Verify subsequent gRPC calls fail because the server is stopped
+		shortCtx, shortCancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer shortCancel()
+
+		_, err = cl.Init(shortCtx, &pb.InitRequest{
+			OcflPath: filepath.ToSlash(filepath.Join(tempDir, "subsequent_root")),
+		})
+		require.Error(t, err, "Expected error on stopped server")
+	})
 }

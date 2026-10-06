@@ -2,7 +2,7 @@
 //
 // The client supports connecting to a gocfl gRPC server over plain TCP or TLS (including
 // dynamic TLS certificate management via certloader). It provides convenient wrapper methods
-// for all OCFL operations (Init, Add, Update, Create, and Validate) with optional live log streaming
+// for all OCFL operations (Init, Add, Update, Create, Validate, and Shutdown) with optional live log streaming
 // callbacks, as well as direct access to the underlying gRPC client streams and connection.
 //
 // # Quickstart

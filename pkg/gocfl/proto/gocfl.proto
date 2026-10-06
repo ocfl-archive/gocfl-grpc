@@ -184,6 +184,18 @@ message ValidateResponse {
   }
 }
 
+// ShutdownRequest represents parameters for shutting down the gRPC server.
+message ShutdownRequest {
+  string reason = 1;
+  bool force = 2;
+}
+
+// ShutdownResponse represents the outcome of the shutdown request.
+message ShutdownResponse {
+  bool success = 1;
+  string message = 2;
+}
+
 // GocflService provides gRPC operations for managing OCFL storage roots and objects.
 service GocflService {
   // Init initializes an empty OCFL storage root.
@@ -200,4 +212,7 @@ service GocflService {
 
   // Validate validates an OCFL storage root or a specific object.
   rpc Validate(ValidateRequest) returns (stream ValidateResponse);
+
+  // Shutdown initiates a graceful or immediate shutdown of the gRPC server.
+  rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
 }

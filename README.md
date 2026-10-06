@@ -88,6 +88,7 @@ Available flags:
 - `-config`: Path to a TOML configuration file.
 - `-log-level`: Logging level (`CRITICAL`, `ERROR`, `WARNING`, `NOTICE`, `INFO`, `DEBUG`).
 - `-log-file`: Path to write log output (default is console/stderr).
+- `-allow-api-shutdown`: Enable remote server termination via the gRPC `Shutdown` API (default is `false`).
 
 
 ### Configuration File (TOML)
@@ -96,6 +97,7 @@ You can provide a TOML configuration file via `-config`:
 
 ```toml
 addr = ":50051"
+allow_api_shutdown = false
 
 
 [log]
@@ -265,6 +267,11 @@ Initializes a storage root and adds an initial object in one operation.
 Validates an entire storage root or a specific object path / object ID against the OCFL specifications.
 - **Request (`ValidateRequest`)**: `ocfl_path`, `object_id`, `object_path`, `extension_params`.
 - **Response (`ValidateResponse`)**: Streams `LogEntry` messages followed by `ValidateResult` (`is_valid`, `message`, `errors` list of `ValidationError`, `warnings`).
+
+#### `Shutdown`
+Initiates a graceful or immediate remote shutdown of the gRPC server process.
+- **Request (`ShutdownRequest`)**: `reason`, `force` (bool).
+- **Response (`ShutdownResponse`)**: `success`, `message`.
 
 ---
 

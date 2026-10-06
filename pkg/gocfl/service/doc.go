@@ -6,6 +6,7 @@
 //   - Update: Ingests a subsequent version (v2, v3, ...) into an existing object.
 //   - Create: Combines storage root initialization and initial object ingestion in a single call.
 //   - Validate: Validates the conformance of an OCFL storage root or a specific OCFL object according to the OCFL specification.
+//   - Shutdown: Handles remote requests to gracefully or immediately terminate the gRPC server process.
 //
 // All operations stream structured Zerolog log entries (as LogEntry payloads) directly to the client
 // during execution, concluding with the final operation result message.

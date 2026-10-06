@@ -129,6 +129,13 @@ func (s *mockGocflServer) Validate(req *pb.ValidateRequest, stream pb.GocflServi
 	})
 }
 
+func (s *mockGocflServer) Shutdown(ctx context.Context, req *pb.ShutdownRequest) (*pb.ShutdownResponse, error) {
+	return &pb.ShutdownResponse{
+		Success: true,
+		Message: "shutdown initiated",
+	}, nil
+}
+
 func TestGocflGRPCService(t *testing.T) {
 	bufferSize := 1024 * 1024
 	lis := bufconn.Listen(bufferSize)
@@ -311,6 +318,18 @@ func TestGocflGRPCService(t *testing.T) {
 	}
 	if valResult == nil || !valResult.GetIsValid() {
 		t.Errorf("Expected IsValid true, got %+v", valResult)
+	}
+
+	// Test Shutdown
+	shutResp, err := client.Shutdown(ctx, &pb.ShutdownRequest{
+		Reason: "test shutdown",
+		Force:  false,
+	})
+	if err != nil {
+		t.Fatalf("Shutdown failed: %v", err)
+	}
+	if shutResp == nil || !shutResp.GetSuccess() {
+		t.Errorf("Expected Shutdown success, got %+v", shutResp)
 	}
 
 	// Verify Protobuf Marshalling

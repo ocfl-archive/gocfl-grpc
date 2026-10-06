@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 
 	"emperror.dev/errors"
 	"github.com/BurntSushi/toml"
@@ -45,7 +46,8 @@ const DefaultServerAddr = ":50051"
 // Config extends the base gocfl configuration with gRPC server settings.
 type Config struct {
 	config.GOCFLConfig
-	Addr string `toml:"addr"`
+	Addr             string `toml:"addr"`
+	AllowAPIShutdown bool   `toml:"allow_api_shutdown"`
 }
 
 // LoadConfig loads the configuration from a TOML file or falls back to embedded defaults.
@@ -215,6 +217,8 @@ type Server struct {
 	closers    []io.Closer
 	logger     zLogger.ZLogger
 	config     *Config
+	stopOnce   sync.Once
+	doneChan   chan struct{}
 }
 
 // NewServer bootstraps all components and constructs a ready-to-run gRPC Server.
@@ -251,6 +255,7 @@ func NewServer(cfg *Config, serverOpts ...grpc.ServerOption) (*Server, error) {
 		service.WithConfig(&cfg.GOCFLConfig),
 		service.WithVFS(vfs),
 		service.WithLogger(logger),
+		service.WithAllowAPIShutdown(cfg.AllowAPIShutdown),
 		service.WithDefaultStorageRootExtensionFS(defaultStorageRootExtensions.DefaultStorageRootExtensionFS),
 		service.WithDefaultObjectExtensionFS(defaultObjectExtensions.DefaultObjectExtensionFS),
 	)
@@ -273,14 +278,25 @@ func NewServer(cfg *Config, serverOpts ...grpc.ServerOption) (*Server, error) {
 	pb.RegisterGocflServiceServer(grpcServer, svc)
 	reflection.Register(grpcServer)
 
-	return &Server{
+	srv := &Server{
 		grpcServer: grpcServer,
 		listener:   lis,
 		service:    svc,
 		closers:    closers,
 		logger:     logger,
 		config:     cfg,
-	}, nil
+		doneChan:   make(chan struct{}),
+	}
+
+	svc.SetShutdownFunc(func(force bool) {
+		if force {
+			srv.Stop()
+		} else {
+			srv.GracefulStop()
+		}
+	})
+
+	return srv, nil
 }
 
 // Addr returns the actual listening network address.
@@ -291,25 +307,47 @@ func (s *Server) Addr() string {
 	return s.config.Addr
 }
 
+// Done returns a channel that is closed when the server has stopped.
+func (s *Server) Done() <-chan struct{} {
+	return s.doneChan
+}
+
 // Serve starts accepting incoming gRPC connections.
 func (s *Server) Serve() error {
 	s.logger.Info().Msgf("gocfl gRPC server listening on %s", s.Addr())
-	return s.grpcServer.Serve(s.listener)
+	err := s.grpcServer.Serve(s.listener)
+	s.stopOnce.Do(func() {
+		for _, c := range s.closers {
+			_ = c.Close()
+		}
+		close(s.doneChan)
+	})
+	if errors.Is(err, grpc.ErrServerStopped) {
+		return nil
+	}
+	return err
 }
 
 // GracefulStop gracefully stops the gRPC server and cleans up resources.
 func (s *Server) GracefulStop() {
-	s.logger.Info().Msg("shutting down gocfl gRPC server...")
-	s.grpcServer.GracefulStop()
-	for _, c := range s.closers {
-		_ = c.Close()
-	}
+	s.stopOnce.Do(func() {
+		s.logger.Info().Msg("shutting down gocfl gRPC server...")
+		s.grpcServer.GracefulStop()
+		for _, c := range s.closers {
+			_ = c.Close()
+		}
+		close(s.doneChan)
+	})
 }
 
 // Stop immediately stops the gRPC server and cleans up resources.
 func (s *Server) Stop() {
-	s.grpcServer.Stop()
-	for _, c := range s.closers {
-		_ = c.Close()
-	}
+	s.stopOnce.Do(func() {
+		s.logger.Info().Msg("immediately stopping gocfl gRPC server...")
+		s.grpcServer.Stop()
+		for _, c := range s.closers {
+			_ = c.Close()
+		}
+		close(s.doneChan)
+	})
 }

@@ -16,6 +16,7 @@ var (
 	flagAddr              = flag.String("addr", "", "gRPC server address to listen on (e.g. :50051)")
 	flagLogFile           = flag.String("log-file", "", "log output file (default is console)")
 	flagLogLevel          = flag.String("log-level", "", "log level (CRITICAL|ERROR|WARNING|NOTICE|INFO|DEBUG)")
+	flagAllowAPIShutdown  = flag.Bool("allow-api-shutdown", false, "allow server shutdown via gRPC API")
 	flagS3Endpoint        = flag.String("s3-endpoint", "", "endpoint for S3 buckets")
 	flagS3AccessKeyID     = flag.String("s3-access-key-id", "", "access key ID for S3 buckets")
 	flagS3SecretAccessKey = flag.String("s3-secret-access-key", "", "secret access key for S3 buckets")
@@ -41,6 +42,9 @@ func main() {
 	if *flagLogLevel != "" {
 		cfg.Log.Level = *flagLogLevel
 	}
+	if *flagAllowAPIShutdown {
+		cfg.AllowAPIShutdown = true
+	}
 	if *flagS3Endpoint != "" {
 		cfg.S3.Endpoint = configutil.EnvString(*flagS3Endpoint)
 	}
@@ -63,16 +67,29 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 
+	serverErrChan := make(chan error, 1)
 	go func() {
 		if err := server.Serve(); err != nil {
-			fmt.Fprintf(os.Stderr, "server error: %v\n", err)
+			serverErrChan <- err
+		} else {
+			close(serverErrChan)
 		}
 	}()
 
 	fmt.Printf("gocfl gRPC server started on %s. Press Ctrl+C to stop.\n", server.Addr())
 
-	sig := <-sigChan
-	fmt.Printf("\nreceived signal %v, shutting down gracefully...\n", sig)
-	server.GracefulStop()
-	fmt.Println("server stopped.")
+	select {
+	case sig := <-sigChan:
+		fmt.Printf("\nreceived signal %v, shutting down gracefully...\n", sig)
+		server.GracefulStop()
+		fmt.Println("server stopped.")
+	case err, ok := <-serverErrChan:
+		if ok && err != nil {
+			fmt.Fprintf(os.Stderr, "server error: %v\n", err)
+		} else {
+			fmt.Println("server stopped via shutdown request.")
+		}
+	case <-server.Done():
+		fmt.Println("server stopped.")
+	}
 }

@@ -23,7 +23,7 @@ func setupBufconnServer(t *testing.T) (*grpc.Server, *bufconn.Listener, *service
 	lis := bufconn.Listen(bufSize)
 	srv := grpc.NewServer()
 
-	svc, err := service.NewGocflService()
+	svc, err := service.NewGocflService(service.WithAllowAPIShutdown(true))
 	require.NoError(t, err)
 
 	pb.RegisterGocflServiceServer(srv, svc)
@@ -136,6 +136,14 @@ func TestClientWithBufconn(t *testing.T) {
 	assert.True(t, createResp.GetSuccess())
 	assert.Equal(t, "urn:test:client:created", createResp.GetObjectId())
 	assert.Equal(t, "v1", createResp.GetVersion())
+
+	// 6. Shutdown
+	shutResp, err := cl.Shutdown(ctx, &pb.ShutdownRequest{
+		Reason: "client test shutdown",
+		Force:  false,
+	})
+	require.NoError(t, err)
+	assert.True(t, shutResp.GetSuccess())
 }
 
 func TestNewClientFromConn(t *testing.T) {

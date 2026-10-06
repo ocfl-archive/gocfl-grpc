@@ -24,6 +24,7 @@ const (
 	GocflService_Update_FullMethodName   = "/gocfl.GocflService/Update"
 	GocflService_Create_FullMethodName   = "/gocfl.GocflService/Create"
 	GocflService_Validate_FullMethodName = "/gocfl.GocflService/Validate"
+	GocflService_Shutdown_FullMethodName = "/gocfl.GocflService/Shutdown"
 )
 
 // GocflServiceClient is the client API for GocflService service.
@@ -40,6 +41,8 @@ type GocflServiceClient interface {
 	Create(ctx context.Context, in *CreateRequest, opts ...grpc.CallOption) (GocflService_CreateClient, error)
 	// Validate validates an OCFL storage root or a specific object.
 	Validate(ctx context.Context, in *ValidateRequest, opts ...grpc.CallOption) (GocflService_ValidateClient, error)
+	// Shutdown initiates a graceful or immediate shutdown of the gRPC server.
+	Shutdown(ctx context.Context, in *ShutdownRequest, opts ...grpc.CallOption) (*ShutdownResponse, error)
 }
 
 type gocflServiceClient struct {
@@ -210,6 +213,15 @@ func (x *gocflServiceValidateClient) Recv() (*ValidateResponse, error) {
 	return m, nil
 }
 
+func (c *gocflServiceClient) Shutdown(ctx context.Context, in *ShutdownRequest, opts ...grpc.CallOption) (*ShutdownResponse, error) {
+	out := new(ShutdownResponse)
+	err := c.cc.Invoke(ctx, GocflService_Shutdown_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // GocflServiceServer is the server API for GocflService service.
 // All implementations must embed UnimplementedGocflServiceServer
 // for forward compatibility
@@ -224,6 +236,8 @@ type GocflServiceServer interface {
 	Create(*CreateRequest, GocflService_CreateServer) error
 	// Validate validates an OCFL storage root or a specific object.
 	Validate(*ValidateRequest, GocflService_ValidateServer) error
+	// Shutdown initiates a graceful or immediate shutdown of the gRPC server.
+	Shutdown(context.Context, *ShutdownRequest) (*ShutdownResponse, error)
 	mustEmbedUnimplementedGocflServiceServer()
 }
 
@@ -245,6 +259,9 @@ func (UnimplementedGocflServiceServer) Create(*CreateRequest, GocflService_Creat
 }
 func (UnimplementedGocflServiceServer) Validate(*ValidateRequest, GocflService_ValidateServer) error {
 	return status.Errorf(codes.Unimplemented, "method Validate not implemented")
+}
+func (UnimplementedGocflServiceServer) Shutdown(context.Context, *ShutdownRequest) (*ShutdownResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Shutdown not implemented")
 }
 func (UnimplementedGocflServiceServer) mustEmbedUnimplementedGocflServiceServer() {}
 
@@ -364,13 +381,36 @@ func (x *gocflServiceValidateServer) Send(m *ValidateResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
+func _GocflService_Shutdown_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShutdownRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GocflServiceServer).Shutdown(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GocflService_Shutdown_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GocflServiceServer).Shutdown(ctx, req.(*ShutdownRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // GocflService_ServiceDesc is the grpc.ServiceDesc for GocflService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var GocflService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "gocfl.GocflService",
 	HandlerType: (*GocflServiceServer)(nil),
-	Methods:     []grpc.MethodDesc{},
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Shutdown",
+			Handler:    _GocflService_Shutdown_Handler,
+		},
+	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "Init",
