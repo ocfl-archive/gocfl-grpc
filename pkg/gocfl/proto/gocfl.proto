@@ -1,0 +1,155 @@
+syntax = "proto3";
+
+package gocfl;
+
+option go_package = "github.com/ocfl-archive/gocfl-grpc/pkg/gocfl/proto";
+
+// User defines the author/committer information for OCFL versions.
+message User {
+  string name = 1;
+  string address = 2;
+}
+
+// AESConfig contains encryption parameters for container storage.
+message AESConfig {
+  bool enable = 1;
+  string key = 2;
+  string iv = 3;
+  string keepass_file = 4;
+  string keepass_entry = 5;
+  string keepass_key = 6;
+}
+
+// InitRequest represents parameters for initializing an OCFL storage root.
+message InitRequest {
+  string ocfl_path = 1;
+  string default_storageroot_extensions = 2;
+  string ocfl_version = 3;
+  string digest = 4;
+  bool no_compress = 5;
+  map<string, string> extension_params = 6;
+}
+
+// InitResponse represents the result of the init operation.
+message InitResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// AddRequest represents parameters for adding a new object to an existing OCFL storage root.
+message AddRequest {
+  string ocfl_path = 1;
+  string src_path = 2;
+  string object_id = 3;
+  string message = 4;
+  User user = 5;
+  string default_object_extensions = 6;
+  repeated string fixity = 7;
+  string digest = 8;
+  bool deduplicate = 9;
+  bool no_compress = 10;
+  string default_area = 11;
+  map<string, string> area_paths = 12;
+  map<string, string> extension_params = 13;
+}
+
+// AddResponse represents the result of the add operation.
+message AddResponse {
+  bool success = 1;
+  string message = 2;
+  string object_id = 3;
+  string version = 4;
+}
+
+// UpdateRequest represents parameters for updating an existing OCFL object.
+message UpdateRequest {
+  string ocfl_path = 1;
+  string src_path = 2;
+  string object_id = 3;
+  string message = 4;
+  User user = 5;
+  string digest = 6;
+  bool deduplicate = 7;
+  bool echo = 8;
+  bool no_compress = 9;
+  AESConfig aes = 10;
+  map<string, string> area_paths = 11;
+  map<string, string> extension_params = 12;
+}
+
+// UpdateResponse represents the result of the update operation.
+message UpdateResponse {
+  bool success = 1;
+  string message = 2;
+  string object_id = 3;
+  string version = 4;
+}
+
+// CreateRequest represents parameters for creating a storage root and adding an initial object.
+message CreateRequest {
+  string ocfl_path = 1;
+  string src_path = 2;
+  string object_id = 3;
+  string message = 4;
+  User user = 5;
+  string ocfl_version = 6;
+  string default_storageroot_extensions = 7;
+  string default_object_extensions = 8;
+  repeated string fixity = 9;
+  string digest = 10;
+  string default_area = 11;
+  bool deduplicate = 12;
+  bool no_compress = 13;
+  AESConfig aes = 14;
+  map<string, string> area_paths = 15;
+  map<string, string> extension_params = 16;
+}
+
+// CreateResponse represents the result of the create operation.
+message CreateResponse {
+  bool success = 1;
+  string message = 2;
+  string object_id = 3;
+  string version = 4;
+}
+
+// ValidateRequest represents parameters for validating an OCFL storage root or specific object.
+message ValidateRequest {
+  string ocfl_path = 1;
+  string object_id = 2;
+  string object_path = 3;
+  map<string, string> extension_params = 4;
+}
+
+// ValidationError represents an individual validation issue.
+message ValidationError {
+  string code = 1;
+  string description = 2;
+  string path = 3;
+}
+
+// ValidateResponse represents the result of the validation.
+message ValidateResponse {
+  bool is_valid = 1;
+  string message = 2;
+  repeated ValidationError errors = 3;
+  repeated string warnings = 4;
+}
+
+// GocflService provides gRPC operations for managing OCFL storage roots and objects.
+service GocflService {
+  // Init initializes an empty OCFL storage root.
+  rpc Init(InitRequest) returns (InitResponse);
+
+  // Add adds a new object into an existing OCFL structure.
+  rpc Add(AddRequest) returns (AddResponse);
+
+  // Update adds a new version to an existing object in an OCFL structure.
+  rpc Update(UpdateRequest) returns (UpdateResponse);
+
+  // Create initializes an OCFL structure and adds an initial object.
+  rpc Create(CreateRequest) returns (CreateResponse);
+
+  // Validate validates an OCFL storage root or a specific object.
+  rpc Validate(ValidateRequest) returns (ValidateResponse);
+}
