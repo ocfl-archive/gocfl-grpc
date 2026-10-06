@@ -278,10 +278,24 @@ Run all unit and integration tests across the repository:
 go test -v ./...
 ```
 
-Run only end-to-end integration tests:
+Run only end-to-end integration and load tests:
 
 ```bash
 go test -v ./test/...
+```
+
+### Running Load Tests & Benchmarks
+
+Run high-concurrency load tests (starts the gRPC server once and executes concurrent batches of `Add`, `Validate`, `Update`, and log streaming calls):
+
+```bash
+go test -v -run TestLoadHighConcurrency ./test/...
+```
+
+Run Go performance benchmarks:
+
+```bash
+go test -bench=BenchmarkGRPCService -benchmem -run=^$ ./test/...
 ```
 
 ### Regenerating Protobuf Stubs
