@@ -757,4 +757,29 @@ func TestFineGrainedHandlesIntegration(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "v2", invResp2.GetInventory().GetHead())
+
+	// 13. Test GetMetadata via Handle
+	metaHandleResp, err := cl.GetMetadata(ctx, &pb.GetMetadataRequest{
+		ObjectHandleId: objHandle2.GetId(),
+		Format:         "json",
+	})
+	require.NoError(t, err)
+	assert.True(t, metaHandleResp.GetSuccess())
+	require.NotNil(t, metaHandleResp.GetMetadata())
+	assert.Equal(t, objID, metaHandleResp.GetMetadata().GetId())
+	assert.Equal(t, "v2", metaHandleResp.GetMetadata().GetHead())
+	assert.NotEmpty(t, metaHandleResp.GetJsonData())
+
+	// 14. Test ExtractMetadata macro RPC
+	macroMetaResp, err := cl.ExtractMetadata(ctx, &pb.ExtractMetadataRequest{
+		OcflPath:  srPath,
+		ObjectId:  objID,
+		Format:    "human",
+		Obfuscate: true,
+	})
+	require.NoError(t, err)
+	assert.True(t, macroMetaResp.GetSuccess())
+	assert.NotEmpty(t, macroMetaResp.GetHumanData())
+	require.NotNil(t, macroMetaResp.GetMetadata())
+	assert.Equal(t, objID, macroMetaResp.GetMetadata().GetId())
 }

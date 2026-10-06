@@ -250,7 +250,49 @@ func TestGocflServiceLifecycle(t *testing.T) {
 		}
 	})
 
-	// 8. Test Shutdown
+	// 8. Test ExtractMetadata
+	t.Run("ExtractMetadata", func(t *testing.T) {
+		// 8a. JSON format
+		metaResp, err := cl.ExtractMetadata(ctx, &pb.ExtractMetadataRequest{
+			OcflPath: storageRootPath,
+			ObjectId: objectID,
+			Format:   "json",
+		}, client.WithCallLogHandler(logHandler))
+		if err != nil {
+			t.Fatalf("ExtractMetadata failed: %v", err)
+		}
+		if !metaResp.GetSuccess() {
+			t.Errorf("Expected ExtractMetadata success true, got false")
+		}
+		if metaResp.GetMetadata() == nil {
+			t.Fatalf("Expected non-nil metadata")
+		}
+		if metaResp.GetMetadata().GetId() != objectID {
+			t.Errorf("Expected object ID %s, got %s", objectID, metaResp.GetMetadata().GetId())
+		}
+		if metaResp.GetJsonData() == "" {
+			t.Errorf("Expected non-empty JsonData")
+		}
+
+		// 8b. Human format and Obfuscated
+		metaHumanResp, err := cl.ExtractMetadata(ctx, &pb.ExtractMetadataRequest{
+			OcflPath:  storageRootPath,
+			ObjectId:  objectID,
+			Format:    "human",
+			Obfuscate: true,
+		})
+		if err != nil {
+			t.Fatalf("ExtractMetadata human/obfuscate failed: %v", err)
+		}
+		if !metaHumanResp.GetSuccess() {
+			t.Errorf("Expected ExtractMetadata human/obfuscate success true, got false")
+		}
+		if metaHumanResp.GetHumanData() == "" {
+			t.Errorf("Expected non-empty HumanData")
+		}
+	})
+
+	// 9. Test Shutdown
 	t.Run("Shutdown Disallowed and Allowed", func(t *testing.T) {
 		shutdownCalled := false
 		svc.SetShutdownFunc(func(force bool) {

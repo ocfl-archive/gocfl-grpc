@@ -49,6 +49,7 @@ type GocflClient interface {
 	Update(ctx context.Context, req *pb.UpdateRequest, opts ...CallOption) (*pb.UpdateResult, error)
 	Create(ctx context.Context, req *pb.CreateRequest, opts ...CallOption) (*pb.CreateResult, error)
 	Validate(ctx context.Context, req *pb.ValidateRequest, opts ...CallOption) (*pb.ValidateResult, error)
+	ExtractMetadata(ctx context.Context, req *pb.ExtractMetadataRequest, opts ...CallOption) (*pb.ExtractMetadataResult, error)
 	Shutdown(ctx context.Context, req *pb.ShutdownRequest, opts ...CallOption) (*pb.ShutdownResponse, error)
 
 	InitStream(ctx context.Context, req *pb.InitRequest, opts ...grpc.CallOption) (pb.GocflService_InitClient, error)
@@ -56,6 +57,7 @@ type GocflClient interface {
 	UpdateStream(ctx context.Context, req *pb.UpdateRequest, opts ...grpc.CallOption) (pb.GocflService_UpdateClient, error)
 	CreateStream(ctx context.Context, req *pb.CreateRequest, opts ...grpc.CallOption) (pb.GocflService_CreateClient, error)
 	ValidateStream(ctx context.Context, req *pb.ValidateRequest, opts ...grpc.CallOption) (pb.GocflService_ValidateClient, error)
+	ExtractMetadataStream(ctx context.Context, req *pb.ExtractMetadataRequest, opts ...grpc.CallOption) (pb.GocflService_ExtractMetadataClient, error)
 
 	// Fine-grained Handle Operations
 	CloseHandle(ctx context.Context, req *pb.CloseHandleRequest, opts ...CallOption) (*pb.CloseHandleResponse, error)
@@ -67,6 +69,7 @@ type GocflClient interface {
 	OpenObject(ctx context.Context, req *pb.OpenObjectRequest, opts ...CallOption) (*pb.ObjectHandle, error)
 	InitObjectHandle(ctx context.Context, req *pb.InitObjectHandleRequest, opts ...CallOption) (*pb.ObjectHandle, error)
 	GetInventory(ctx context.Context, req *pb.GetInventoryRequest, opts ...CallOption) (*pb.InventoryResponse, error)
+	GetMetadata(ctx context.Context, req *pb.GetMetadataRequest, opts ...CallOption) (*pb.GetMetadataResponse, error)
 	ValidateObjectHandle(ctx context.Context, req *pb.ValidateObjectHandleRequest, opts ...CallOption) (*pb.ValidateObjectHandleResponse, error)
 	BeginUpdate(ctx context.Context, req *pb.BeginUpdateRequest, opts ...CallOption) (*pb.UpdaterHandle, error)
 	AddFile(ctx context.Context, req *pb.AddFileRequest, opts ...CallOption) (*pb.AddFileResponse, error)
@@ -431,6 +434,47 @@ func (c *Client) Validate(ctx context.Context, req *pb.ValidateRequest, opts ...
 	return result, nil
 }
 
+// ExtractMetadataStream initiates the ExtractMetadata stream.
+func (c *Client) ExtractMetadataStream(ctx context.Context, req *pb.ExtractMetadataRequest, opts ...grpc.CallOption) (pb.GocflService_ExtractMetadataClient, error) {
+	return c.grpcClient.ExtractMetadata(ctx, req, opts...)
+}
+
+// ExtractMetadata extracts metadata from an OCFL structure, draining logs and returning the final result.
+func (c *Client) ExtractMetadata(ctx context.Context, req *pb.ExtractMetadataRequest, opts ...CallOption) (*pb.ExtractMetadataResult, error) {
+	co := &callOptions{}
+	for _, o := range opts {
+		o(co)
+	}
+
+	stream, err := c.grpcClient.ExtractMetadata(ctx, req, co.grpcOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result *pb.ExtractMetadataResult
+	for {
+		resp, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if logEntry := resp.GetLog(); logEntry != nil {
+			if co.logHandler != nil {
+				co.logHandler(logEntry)
+			}
+		}
+		if res := resp.GetResult(); res != nil {
+			result = res
+		}
+	}
+	if result == nil {
+		return nil, errors.New("server closed stream without returning a result")
+	}
+	return result, nil
+}
+
 // Shutdown initiates a server shutdown over gRPC.
 func (c *Client) Shutdown(ctx context.Context, req *pb.ShutdownRequest, opts ...CallOption) (*pb.ShutdownResponse, error) {
 	co := &callOptions{}
@@ -520,6 +564,15 @@ func (c *Client) GetInventory(ctx context.Context, req *pb.GetInventoryRequest, 
 		o(co)
 	}
 	return c.grpcClient.GetInventory(ctx, req, co.grpcOpts...)
+}
+
+// GetMetadata retrieves the metadata snapshot from an open object handle.
+func (c *Client) GetMetadata(ctx context.Context, req *pb.GetMetadataRequest, opts ...CallOption) (*pb.GetMetadataResponse, error) {
+	co := &callOptions{}
+	for _, o := range opts {
+		o(co)
+	}
+	return c.grpcClient.GetMetadata(ctx, req, co.grpcOpts...)
 }
 
 // ValidateObjectHandle validates an open OCFL object.

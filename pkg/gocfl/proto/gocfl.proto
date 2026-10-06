@@ -184,6 +184,66 @@ message ValidateResponse {
   }
 }
 
+// VersionMetadataProto represents metadata for a specific OCFL version.
+message VersionMetadataProto {
+  string created = 1;
+  string message = 2;
+  string name = 3;
+  string address = 4;
+}
+
+// VersionNamesProto holds a list of file names in a version.
+message VersionNamesProto {
+  repeated string names = 1;
+}
+
+// FileMetadataProto represents file metadata across versions and extensions.
+message FileMetadataProto {
+  map<string, string> checksums = 1;
+  repeated string internal_name = 2;
+  map<string, VersionNamesProto> version_name = 3;
+  string extension_json = 4;
+}
+
+// ObjectMetadataProto represents the complete object metadata snapshot.
+message ObjectMetadataProto {
+  string id = 1;
+  string digest_algorithm = 2;
+  string head = 3;
+  map<string, VersionMetadataProto> versions = 4;
+  map<string, FileMetadataProto> files = 5;
+  string extension_json = 6;
+}
+
+// ExtractMetadataRequest represents parameters for extracting metadata from an OCFL structure.
+message ExtractMetadataRequest {
+  string ocfl_path = 1;
+  string object_path = 2;
+  string object_id = 3;
+  string version = 4;
+  string format = 5; // "json", "human"
+  bool obfuscate = 6;
+  string default_object_extensions = 7;
+  map<string, string> extension_params = 8;
+}
+
+// ExtractMetadataResult represents the final outcome of extracting metadata.
+message ExtractMetadataResult {
+  bool success = 1;
+  string message = 2;
+  string json_data = 3;
+  string human_data = 4;
+  ObjectMetadataProto metadata = 5;
+}
+
+// ExtractMetadataResponse represents a stream message carrying either a log entry or the final result.
+message ExtractMetadataResponse {
+  oneof payload {
+    LogEntry log = 1;
+    ExtractMetadataResult result = 2;
+  }
+}
+
 // DigestPaths associates a digest with a list of file paths.
 message DigestPaths {
   repeated string paths = 1;
@@ -328,6 +388,22 @@ message InventoryResponse {
   Inventory inventory = 1;
 }
 
+// GetMetadataRequest retrieves metadata from an open object handle.
+message GetMetadataRequest {
+  string object_handle_id = 1;
+  bool obfuscate = 2;
+  string format = 3; // "json", "human"
+}
+
+// GetMetadataResponse returns the metadata snapshot of an open object.
+message GetMetadataResponse {
+  bool success = 1;
+  string message = 2;
+  string json_data = 3;
+  string human_data = 4;
+  ObjectMetadataProto metadata = 5;
+}
+
 // ValidateObjectHandleRequest validates an open object.
 message ValidateObjectHandleRequest {
   string object_handle_id = 1;
@@ -462,6 +538,9 @@ service GocflService {
   // Validate validates an OCFL storage root or a specific object.
   rpc Validate(ValidateRequest) returns (stream ValidateResponse);
 
+  // ExtractMetadata extracts metadata from an OCFL structure or specific object.
+  rpc ExtractMetadata(ExtractMetadataRequest) returns (stream ExtractMetadataResponse);
+
   // Shutdown initiates a graceful or immediate shutdown of the gRPC server.
   rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
 
@@ -492,6 +571,9 @@ service GocflService {
 
   // GetInventory retrieves the full Inventory snapshot as a Protobuf message.
   rpc GetInventory(GetInventoryRequest) returns (InventoryResponse);
+
+  // GetMetadata retrieves metadata from an open object handle.
+  rpc GetMetadata(GetMetadataRequest) returns (GetMetadataResponse);
 
   // ValidateObjectHandle validates an open OCFL object.
   rpc ValidateObjectHandle(ValidateObjectHandleRequest) returns (ValidateObjectHandleResponse);

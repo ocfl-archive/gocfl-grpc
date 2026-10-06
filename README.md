@@ -249,6 +249,7 @@ message LogEntry {
 - `Update`: Creates a subsequent version for an existing object with deduplication and area support.
 - `Create`: Initializes a storage root and adds an initial object in one operation.
 - `Validate`: Conformance validation of storage roots or objects according to OCFL specs.
+- `ExtractMetadata`: Extracts object metadata with optional JSON/human formatting and obfuscation.
 - `Shutdown`: Remote graceful or immediate shutdown of the gRPC server process.
 
 #### Fine-Grained Handle Operations
@@ -256,6 +257,7 @@ message LogEntry {
 - `ListObjects` / `GetStorageRootDetails`: Queries object folders and storage root layout configuration.
 - `OpenObject` / `InitObjectHandle`: Opens/Initializes an OCFL object within a storage root or direct path and returns an `ObjectHandle`.
 - `GetInventory`: Retrieves the full immutable `Inventory` protobuf snapshot (`manifest`, `versions`, `state`, `fixity`, `head`, `spec`).
+- `GetMetadata`: Extracts the object metadata snapshot (`files`, `versions`, `physical paths`, `extensions`) from an open handle.
 - `ValidateObjectHandle`: Validates an open object handle without re-opening filesystems.
 - `BeginUpdate`: Starts a new staging version update session returning an `UpdaterHandle`.
 - `AddFile` / `AddFolder`: Adds files (direct byte payload or VFS path) to the active version.

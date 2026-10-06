@@ -247,7 +247,19 @@ func TestClientWithBufconn(t *testing.T) {
 	require.NotNil(t, commitResp2.GetNewInventory())
 	assert.Equal(t, "v2", commitResp2.GetNewInventory().GetHead())
 
-	// 6i. KeepAlive and Close Handles
+	// 6i. Get Metadata via Handle
+	metaHandleResp, err := cl.GetMetadata(ctx, &pb.GetMetadataRequest{
+		ObjectHandleId: objHandle.GetId(),
+		Format:         "json",
+	})
+	require.NoError(t, err)
+	assert.True(t, metaHandleResp.GetSuccess())
+	require.NotNil(t, metaHandleResp.GetMetadata())
+	assert.Equal(t, "urn:handle:obj1", metaHandleResp.GetMetadata().GetId())
+	assert.Equal(t, "v2", metaHandleResp.GetMetadata().GetHead())
+	assert.NotEmpty(t, metaHandleResp.GetJsonData())
+
+	// 6j. KeepAlive and Close Handles
 	keepResp, err := cl.KeepAlive(ctx, &pb.KeepAliveRequest{
 		HandleId:      srHandle.GetId(),
 		ExtendSeconds: 600,

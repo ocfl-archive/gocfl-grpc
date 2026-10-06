@@ -239,7 +239,25 @@ if !valResult.IsValid {
 }
 ```
 
-### 6. `Shutdown` — Gracefully Terminate Server
+### 6. `ExtractMetadata` — Extract Object Metadata
+```go
+metaResult, err := cl.ExtractMetadata(ctx, &pb.ExtractMetadataRequest{
+    OcflPath:  "/path/to/storage_root",
+    ObjectId:  "urn:uuid:4f2081d5-b0b9-4f7b-99d8-9df24fca1a38",
+    Format:    "json",  // "json" or "human"
+    Obfuscate: false,   // true to obfuscate sensitive metadata and file paths
+})
+if err != nil {
+    log.Fatalf("failed to extract metadata: %v", err)
+}
+
+fmt.Printf("Raw JSON:\n%s\n", metaResult.JsonData)
+if metaResult.HumanData != "" {
+    fmt.Printf("Human Text:\n%s\n", metaResult.HumanData)
+}
+```
+
+### 7. `Shutdown` — Gracefully Terminate Server
 
 ```go
 shutResp, err := cl.Shutdown(ctx, &pb.ShutdownRequest{
@@ -299,6 +317,16 @@ for digest, paths := range inv.Manifest {
 for verNum, ver := range inv.Versions {
     fmt.Printf("Version %s: created at %s, message: %q, author: %s\n",
         verNum, ver.Created, ver.Message, ver.User.GetName())
+}
+
+// Inspect Object Metadata snapshot (files, physical paths, extensions)
+metaResp, err := cl.GetMetadata(ctx, &pb.GetMetadataRequest{
+    ObjectHandleId: objHandle.Id,
+    Format:         "json",
+    Obfuscate:      false,
+})
+if err == nil {
+    fmt.Printf("Metadata JSON:\n%s\n", metaResp.JsonData)
 }
 ```
 

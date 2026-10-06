@@ -24,6 +24,7 @@ const (
 	GocflService_Update_FullMethodName                = "/gocfl.GocflService/Update"
 	GocflService_Create_FullMethodName                = "/gocfl.GocflService/Create"
 	GocflService_Validate_FullMethodName              = "/gocfl.GocflService/Validate"
+	GocflService_ExtractMetadata_FullMethodName       = "/gocfl.GocflService/ExtractMetadata"
 	GocflService_Shutdown_FullMethodName              = "/gocfl.GocflService/Shutdown"
 	GocflService_CloseHandle_FullMethodName           = "/gocfl.GocflService/CloseHandle"
 	GocflService_KeepAlive_FullMethodName             = "/gocfl.GocflService/KeepAlive"
@@ -34,6 +35,7 @@ const (
 	GocflService_OpenObject_FullMethodName            = "/gocfl.GocflService/OpenObject"
 	GocflService_InitObjectHandle_FullMethodName      = "/gocfl.GocflService/InitObjectHandle"
 	GocflService_GetInventory_FullMethodName          = "/gocfl.GocflService/GetInventory"
+	GocflService_GetMetadata_FullMethodName           = "/gocfl.GocflService/GetMetadata"
 	GocflService_ValidateObjectHandle_FullMethodName  = "/gocfl.GocflService/ValidateObjectHandle"
 	GocflService_BeginUpdate_FullMethodName           = "/gocfl.GocflService/BeginUpdate"
 	GocflService_AddFile_FullMethodName               = "/gocfl.GocflService/AddFile"
@@ -59,6 +61,8 @@ type GocflServiceClient interface {
 	Create(ctx context.Context, in *CreateRequest, opts ...grpc.CallOption) (GocflService_CreateClient, error)
 	// Validate validates an OCFL storage root or a specific object.
 	Validate(ctx context.Context, in *ValidateRequest, opts ...grpc.CallOption) (GocflService_ValidateClient, error)
+	// ExtractMetadata extracts metadata from an OCFL structure or specific object.
+	ExtractMetadata(ctx context.Context, in *ExtractMetadataRequest, opts ...grpc.CallOption) (GocflService_ExtractMetadataClient, error)
 	// Shutdown initiates a graceful or immediate shutdown of the gRPC server.
 	Shutdown(ctx context.Context, in *ShutdownRequest, opts ...grpc.CallOption) (*ShutdownResponse, error)
 	// ─── Fine-Grained Handle Operations ──────────────────────────────────
@@ -80,6 +84,8 @@ type GocflServiceClient interface {
 	InitObjectHandle(ctx context.Context, in *InitObjectHandleRequest, opts ...grpc.CallOption) (*ObjectHandle, error)
 	// GetInventory retrieves the full Inventory snapshot as a Protobuf message.
 	GetInventory(ctx context.Context, in *GetInventoryRequest, opts ...grpc.CallOption) (*InventoryResponse, error)
+	// GetMetadata retrieves metadata from an open object handle.
+	GetMetadata(ctx context.Context, in *GetMetadataRequest, opts ...grpc.CallOption) (*GetMetadataResponse, error)
 	// ValidateObjectHandle validates an open OCFL object.
 	ValidateObjectHandle(ctx context.Context, in *ValidateObjectHandleRequest, opts ...grpc.CallOption) (*ValidateObjectHandleResponse, error)
 	// BeginUpdate starts a new version update session on an open object.
@@ -266,6 +272,38 @@ func (x *gocflServiceValidateClient) Recv() (*ValidateResponse, error) {
 	return m, nil
 }
 
+func (c *gocflServiceClient) ExtractMetadata(ctx context.Context, in *ExtractMetadataRequest, opts ...grpc.CallOption) (GocflService_ExtractMetadataClient, error) {
+	stream, err := c.cc.NewStream(ctx, &GocflService_ServiceDesc.Streams[5], GocflService_ExtractMetadata_FullMethodName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &gocflServiceExtractMetadataClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type GocflService_ExtractMetadataClient interface {
+	Recv() (*ExtractMetadataResponse, error)
+	grpc.ClientStream
+}
+
+type gocflServiceExtractMetadataClient struct {
+	grpc.ClientStream
+}
+
+func (x *gocflServiceExtractMetadataClient) Recv() (*ExtractMetadataResponse, error) {
+	m := new(ExtractMetadataResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 func (c *gocflServiceClient) Shutdown(ctx context.Context, in *ShutdownRequest, opts ...grpc.CallOption) (*ShutdownResponse, error) {
 	out := new(ShutdownResponse)
 	err := c.cc.Invoke(ctx, GocflService_Shutdown_FullMethodName, in, out, opts...)
@@ -350,6 +388,15 @@ func (c *gocflServiceClient) InitObjectHandle(ctx context.Context, in *InitObjec
 func (c *gocflServiceClient) GetInventory(ctx context.Context, in *GetInventoryRequest, opts ...grpc.CallOption) (*InventoryResponse, error) {
 	out := new(InventoryResponse)
 	err := c.cc.Invoke(ctx, GocflService_GetInventory_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gocflServiceClient) GetMetadata(ctx context.Context, in *GetMetadataRequest, opts ...grpc.CallOption) (*GetMetadataResponse, error) {
+	out := new(GetMetadataResponse)
+	err := c.cc.Invoke(ctx, GocflService_GetMetadata_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -443,6 +490,8 @@ type GocflServiceServer interface {
 	Create(*CreateRequest, GocflService_CreateServer) error
 	// Validate validates an OCFL storage root or a specific object.
 	Validate(*ValidateRequest, GocflService_ValidateServer) error
+	// ExtractMetadata extracts metadata from an OCFL structure or specific object.
+	ExtractMetadata(*ExtractMetadataRequest, GocflService_ExtractMetadataServer) error
 	// Shutdown initiates a graceful or immediate shutdown of the gRPC server.
 	Shutdown(context.Context, *ShutdownRequest) (*ShutdownResponse, error)
 	// ─── Fine-Grained Handle Operations ──────────────────────────────────
@@ -464,6 +513,8 @@ type GocflServiceServer interface {
 	InitObjectHandle(context.Context, *InitObjectHandleRequest) (*ObjectHandle, error)
 	// GetInventory retrieves the full Inventory snapshot as a Protobuf message.
 	GetInventory(context.Context, *GetInventoryRequest) (*InventoryResponse, error)
+	// GetMetadata retrieves metadata from an open object handle.
+	GetMetadata(context.Context, *GetMetadataRequest) (*GetMetadataResponse, error)
 	// ValidateObjectHandle validates an open OCFL object.
 	ValidateObjectHandle(context.Context, *ValidateObjectHandleRequest) (*ValidateObjectHandleResponse, error)
 	// BeginUpdate starts a new version update session on an open object.
@@ -502,6 +553,9 @@ func (UnimplementedGocflServiceServer) Create(*CreateRequest, GocflService_Creat
 func (UnimplementedGocflServiceServer) Validate(*ValidateRequest, GocflService_ValidateServer) error {
 	return status.Errorf(codes.Unimplemented, "method Validate not implemented")
 }
+func (UnimplementedGocflServiceServer) ExtractMetadata(*ExtractMetadataRequest, GocflService_ExtractMetadataServer) error {
+	return status.Errorf(codes.Unimplemented, "method ExtractMetadata not implemented")
+}
 func (UnimplementedGocflServiceServer) Shutdown(context.Context, *ShutdownRequest) (*ShutdownResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Shutdown not implemented")
 }
@@ -531,6 +585,9 @@ func (UnimplementedGocflServiceServer) InitObjectHandle(context.Context, *InitOb
 }
 func (UnimplementedGocflServiceServer) GetInventory(context.Context, *GetInventoryRequest) (*InventoryResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetInventory not implemented")
+}
+func (UnimplementedGocflServiceServer) GetMetadata(context.Context, *GetMetadataRequest) (*GetMetadataResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetMetadata not implemented")
 }
 func (UnimplementedGocflServiceServer) ValidateObjectHandle(context.Context, *ValidateObjectHandleRequest) (*ValidateObjectHandleResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ValidateObjectHandle not implemented")
@@ -671,6 +728,27 @@ type gocflServiceValidateServer struct {
 }
 
 func (x *gocflServiceValidateServer) Send(m *ValidateResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _GocflService_ExtractMetadata_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ExtractMetadataRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(GocflServiceServer).ExtractMetadata(m, &gocflServiceExtractMetadataServer{stream})
+}
+
+type GocflService_ExtractMetadataServer interface {
+	Send(*ExtractMetadataResponse) error
+	grpc.ServerStream
+}
+
+type gocflServiceExtractMetadataServer struct {
+	grpc.ServerStream
+}
+
+func (x *gocflServiceExtractMetadataServer) Send(m *ExtractMetadataResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
@@ -850,6 +928,24 @@ func _GocflService_GetInventory_Handler(srv interface{}, ctx context.Context, de
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(GocflServiceServer).GetInventory(ctx, req.(*GetInventoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GocflService_GetMetadata_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetMetadataRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GocflServiceServer).GetMetadata(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GocflService_GetMetadata_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GocflServiceServer).GetMetadata(ctx, req.(*GetMetadataRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1046,6 +1142,10 @@ var GocflService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _GocflService_GetInventory_Handler,
 		},
 		{
+			MethodName: "GetMetadata",
+			Handler:    _GocflService_GetMetadata_Handler,
+		},
+		{
 			MethodName: "ValidateObjectHandle",
 			Handler:    _GocflService_ValidateObjectHandle_Handler,
 		},
@@ -1102,6 +1202,11 @@ var GocflService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "Validate",
 			Handler:       _GocflService_Validate_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "ExtractMetadata",
+			Handler:       _GocflService_ExtractMetadata_Handler,
 			ServerStreams: true,
 		},
 	},

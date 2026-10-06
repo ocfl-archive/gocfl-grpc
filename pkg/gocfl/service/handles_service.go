@@ -374,6 +374,45 @@ func (s *GocflService) GetInventory(ctx context.Context, req *pb.GetInventoryReq
 	}, nil
 }
 
+// GetMetadata retrieves the metadata of an open OCFL object handle.
+func (s *GocflService) GetMetadata(ctx context.Context, req *pb.GetMetadataRequest) (*pb.GetMetadataResponse, error) {
+	if req.GetObjectHandleId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "object_handle_id is required")
+	}
+
+	objEntry, err := s.handleManager.Objects.Get(req.GetObjectHandleId())
+	if err != nil {
+		return nil, err
+	}
+
+	objEntry.mu.RLock()
+	defer objEntry.mu.RUnlock()
+
+	extractor := objEntry.Resource.GetExtractor()
+	if extractor == nil {
+		return nil, status.Error(codes.Internal, "object extractor not available")
+	}
+	defer extractor.Close()
+
+	meta, err := extractor.GetMetadata()
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to extract metadata: %v", err)
+	}
+
+	pbMeta, jsonData, humanData, err := MetadataToProto(meta, req.GetFormat(), req.GetObfuscate())
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to format metadata: %v", err)
+	}
+
+	return &pb.GetMetadataResponse{
+		Success:   true,
+		Message:   "metadata extracted successfully",
+		JsonData:  jsonData,
+		HumanData: humanData,
+		Metadata:  pbMeta,
+	}, nil
+}
+
 // ValidateObjectHandle validates an open OCFL object.
 func (s *GocflService) ValidateObjectHandle(ctx context.Context, req *pb.ValidateObjectHandleRequest) (*pb.ValidateObjectHandleResponse, error) {
 	if req.GetObjectHandleId() == "" {

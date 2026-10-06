@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"sync"
@@ -947,6 +948,129 @@ func (s *GocflService) Validate(req *pb.ValidateRequest, stream pb.GocflService_
 				Message:  msg,
 				Errors:   valErrors,
 				Warnings: warnings,
+			},
+		},
+	})
+}
+
+// ExtractMetadata extracts metadata from an OCFL object or storage root.
+func (s *GocflService) ExtractMetadata(req *pb.ExtractMetadataRequest, stream pb.GocflService_ExtractMetadataServer) error {
+	if req.GetOcflPath() == "" && req.GetObjectPath() == "" {
+		return status.Error(codes.InvalidArgument, "either ocfl_path or object_path is required")
+	}
+
+	ctx := stream.Context()
+	var streamMu sync.Mutex
+	sendLog := func(entry *pb.LogEntry) error {
+		streamMu.Lock()
+		defer streamMu.Unlock()
+		return stream.Send(&pb.ExtractMetadataResponse{
+			Payload: &pb.ExtractMetadataResponse_Log{
+				Log: entry,
+			},
+		})
+	}
+
+	var ocflVer = version.Default
+	var objFS appendfs.FS
+	var closer io.Closer
+	var err error
+
+	if req.GetObjectPath() != "" {
+		objFolder := writefs.RealPath(s.vfs, req.GetObjectPath())
+		objFS, closer, err = appendfs.Sub(s.vfs, objFolder)
+		if err != nil {
+			return status.Errorf(codes.Internal, "failed to open object subfs at '%s': %v", objFolder, err)
+		}
+	} else {
+		srPath := writefs.RealPath(s.vfs, req.GetOcflPath())
+		srFS, srCloser, err := appendfs.Sub(s.vfs, srPath)
+		if err != nil {
+			return status.Errorf(codes.Internal, "failed to open storage root subfs '%s': %v", srPath, err)
+		}
+		defer func() {
+			if srCloser != nil {
+				_ = srCloser.Close()
+			}
+		}()
+
+		v, err := util.GetStorageRootVersion(srFS)
+		if err == nil {
+			ocflVer = v
+		}
+
+		logger := s.newStreamLogger(ctx, ocflVer, sendLog)
+
+		// Check if srFS itself is directly an OCFL object
+		if objV, err := util.GetObjectVersion(srFS); err == nil && objV != "" {
+			objFS = srFS
+			ocflVer = objV
+		} else {
+			sr, err := ocfl.LoadStorageRoot(ctx, srFS, req.GetExtensionParams(), nil, logger)
+			if err != nil {
+				return status.Errorf(codes.Internal, "failed to load storage root: %v", err)
+			}
+			defer sr.Close()
+
+			oFolder := req.GetObjectPath()
+			if req.GetObjectId() != "" {
+				oFolder, err = sr.IdToFolder(req.GetObjectId())
+				if err != nil {
+					return status.Errorf(codes.Internal, "failed to map id '%s' to folder: %v", req.GetObjectId(), err)
+				}
+			}
+			if oFolder == "" {
+				return status.Error(codes.InvalidArgument, "must specify either object_id or object_path for storage root")
+			}
+
+			subFS, subCloser, err := appendfs.Sub(srFS, oFolder)
+			if err != nil {
+				return status.Errorf(codes.Internal, "failed to open subfs for '%s': %v", oFolder, err)
+			}
+			objFS = subFS
+			closer = subCloser
+		}
+	}
+
+	defer func() {
+		if closer != nil {
+			_ = closer.Close()
+		}
+	}()
+
+	logger := s.newStreamLogger(ctx, ocflVer, sendLog)
+	obj, err := ocfl.LoadObject(ctx, objFS, req.GetExtensionParams(), logger)
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to load object: %v", err)
+	}
+	defer obj.Close()
+
+	extractor := obj.GetExtractor()
+	if extractor == nil {
+		return status.Error(codes.Internal, "object extractor not available")
+	}
+	defer extractor.Close()
+
+	meta, err := extractor.GetMetadata()
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to extract metadata: %v", err)
+	}
+
+	pbMeta, jsonData, humanData, err := MetadataToProto(meta, req.GetFormat(), req.GetObfuscate())
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to process metadata: %v", err)
+	}
+
+	streamMu.Lock()
+	defer streamMu.Unlock()
+	return stream.Send(&pb.ExtractMetadataResponse{
+		Payload: &pb.ExtractMetadataResponse_Result{
+			Result: &pb.ExtractMetadataResult{
+				Success:   true,
+				Message:   "metadata extracted successfully",
+				JsonData:  jsonData,
+				HumanData: humanData,
+				Metadata:  pbMeta,
 			},
 		},
 	})
