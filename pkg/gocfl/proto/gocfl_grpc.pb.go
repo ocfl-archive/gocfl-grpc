@@ -19,18 +19,36 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	GocflService_Init_FullMethodName     = "/gocfl.GocflService/Init"
-	GocflService_Add_FullMethodName      = "/gocfl.GocflService/Add"
-	GocflService_Update_FullMethodName   = "/gocfl.GocflService/Update"
-	GocflService_Create_FullMethodName   = "/gocfl.GocflService/Create"
-	GocflService_Validate_FullMethodName = "/gocfl.GocflService/Validate"
-	GocflService_Shutdown_FullMethodName = "/gocfl.GocflService/Shutdown"
+	GocflService_Init_FullMethodName                  = "/gocfl.GocflService/Init"
+	GocflService_Add_FullMethodName                   = "/gocfl.GocflService/Add"
+	GocflService_Update_FullMethodName                = "/gocfl.GocflService/Update"
+	GocflService_Create_FullMethodName                = "/gocfl.GocflService/Create"
+	GocflService_Validate_FullMethodName              = "/gocfl.GocflService/Validate"
+	GocflService_Shutdown_FullMethodName              = "/gocfl.GocflService/Shutdown"
+	GocflService_CloseHandle_FullMethodName           = "/gocfl.GocflService/CloseHandle"
+	GocflService_KeepAlive_FullMethodName             = "/gocfl.GocflService/KeepAlive"
+	GocflService_OpenStorageRoot_FullMethodName       = "/gocfl.GocflService/OpenStorageRoot"
+	GocflService_InitStorageRootHandle_FullMethodName = "/gocfl.GocflService/InitStorageRootHandle"
+	GocflService_ListObjects_FullMethodName           = "/gocfl.GocflService/ListObjects"
+	GocflService_GetStorageRootDetails_FullMethodName = "/gocfl.GocflService/GetStorageRootDetails"
+	GocflService_OpenObject_FullMethodName            = "/gocfl.GocflService/OpenObject"
+	GocflService_InitObjectHandle_FullMethodName      = "/gocfl.GocflService/InitObjectHandle"
+	GocflService_GetInventory_FullMethodName          = "/gocfl.GocflService/GetInventory"
+	GocflService_ValidateObjectHandle_FullMethodName  = "/gocfl.GocflService/ValidateObjectHandle"
+	GocflService_BeginUpdate_FullMethodName           = "/gocfl.GocflService/BeginUpdate"
+	GocflService_AddFile_FullMethodName               = "/gocfl.GocflService/AddFile"
+	GocflService_AddFolder_FullMethodName             = "/gocfl.GocflService/AddFolder"
+	GocflService_DeleteFile_FullMethodName            = "/gocfl.GocflService/DeleteFile"
+	GocflService_RenameFile_FullMethodName            = "/gocfl.GocflService/RenameFile"
+	GocflService_CommitUpdate_FullMethodName          = "/gocfl.GocflService/CommitUpdate"
+	GocflService_RollbackUpdate_FullMethodName        = "/gocfl.GocflService/RollbackUpdate"
 )
 
 // GocflServiceClient is the client API for GocflService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type GocflServiceClient interface {
+	// ─── Macro Operations (High-level 1-call RPCs) ───────────────────────
 	// Init initializes an empty OCFL storage root.
 	Init(ctx context.Context, in *InitRequest, opts ...grpc.CallOption) (GocflService_InitClient, error)
 	// Add adds a new object into an existing OCFL structure.
@@ -43,6 +61,41 @@ type GocflServiceClient interface {
 	Validate(ctx context.Context, in *ValidateRequest, opts ...grpc.CallOption) (GocflService_ValidateClient, error)
 	// Shutdown initiates a graceful or immediate shutdown of the gRPC server.
 	Shutdown(ctx context.Context, in *ShutdownRequest, opts ...grpc.CallOption) (*ShutdownResponse, error)
+	// ─── Fine-Grained Handle Operations ──────────────────────────────────
+	// CloseHandle closes and releases an open StorageRoot, Object, or Updater handle.
+	CloseHandle(ctx context.Context, in *CloseHandleRequest, opts ...grpc.CallOption) (*CloseHandleResponse, error)
+	// KeepAlive renews the lease/TTL of an open handle.
+	KeepAlive(ctx context.Context, in *KeepAliveRequest, opts ...grpc.CallOption) (*KeepAliveResponse, error)
+	// OpenStorageRoot opens an existing OCFL storage root and returns a handle.
+	OpenStorageRoot(ctx context.Context, in *OpenStorageRootRequest, opts ...grpc.CallOption) (*StorageRootHandle, error)
+	// InitStorageRootHandle initializes a storage root and returns an open handle.
+	InitStorageRootHandle(ctx context.Context, in *InitStorageRootHandleRequest, opts ...grpc.CallOption) (*StorageRootHandle, error)
+	// ListObjects lists object folders within an open storage root.
+	ListObjects(ctx context.Context, in *ListObjectsRequest, opts ...grpc.CallOption) (*ListObjectsResponse, error)
+	// GetStorageRootDetails retrieves version and layout details of an open storage root.
+	GetStorageRootDetails(ctx context.Context, in *GetStorageRootDetailsRequest, opts ...grpc.CallOption) (*StorageRootDetailsResponse, error)
+	// OpenObject opens an existing OCFL object within a storage root or direct path.
+	OpenObject(ctx context.Context, in *OpenObjectRequest, opts ...grpc.CallOption) (*ObjectHandle, error)
+	// InitObjectHandle initializes a new OCFL object and returns an open handle.
+	InitObjectHandle(ctx context.Context, in *InitObjectHandleRequest, opts ...grpc.CallOption) (*ObjectHandle, error)
+	// GetInventory retrieves the full Inventory snapshot as a Protobuf message.
+	GetInventory(ctx context.Context, in *GetInventoryRequest, opts ...grpc.CallOption) (*InventoryResponse, error)
+	// ValidateObjectHandle validates an open OCFL object.
+	ValidateObjectHandle(ctx context.Context, in *ValidateObjectHandleRequest, opts ...grpc.CallOption) (*ValidateObjectHandleResponse, error)
+	// BeginUpdate starts a new version update session on an open object.
+	BeginUpdate(ctx context.Context, in *BeginUpdateRequest, opts ...grpc.CallOption) (*UpdaterHandle, error)
+	// AddFile adds a file with direct content bytes into the active version.
+	AddFile(ctx context.Context, in *AddFileRequest, opts ...grpc.CallOption) (*AddFileResponse, error)
+	// AddFolder adds all files from a VFS path into the active version.
+	AddFolder(ctx context.Context, in *AddFolderRequest, opts ...grpc.CallOption) (*AddFolderResponse, error)
+	// DeleteFile removes a file from the active version state.
+	DeleteFile(ctx context.Context, in *DeleteFileRequest, opts ...grpc.CallOption) (*DeleteFileResponse, error)
+	// RenameFile renames a file within the active version state.
+	RenameFile(ctx context.Context, in *RenameFileRequest, opts ...grpc.CallOption) (*RenameFileResponse, error)
+	// CommitUpdate commits the version update and updates the object's inventory.
+	CommitUpdate(ctx context.Context, in *CommitUpdateRequest, opts ...grpc.CallOption) (*CommitUpdateResponse, error)
+	// RollbackUpdate cancels the version update and discards uncommitted changes.
+	RollbackUpdate(ctx context.Context, in *RollbackUpdateRequest, opts ...grpc.CallOption) (*RollbackUpdateResponse, error)
 }
 
 type gocflServiceClient struct {
@@ -222,10 +275,164 @@ func (c *gocflServiceClient) Shutdown(ctx context.Context, in *ShutdownRequest, 
 	return out, nil
 }
 
+func (c *gocflServiceClient) CloseHandle(ctx context.Context, in *CloseHandleRequest, opts ...grpc.CallOption) (*CloseHandleResponse, error) {
+	out := new(CloseHandleResponse)
+	err := c.cc.Invoke(ctx, GocflService_CloseHandle_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gocflServiceClient) KeepAlive(ctx context.Context, in *KeepAliveRequest, opts ...grpc.CallOption) (*KeepAliveResponse, error) {
+	out := new(KeepAliveResponse)
+	err := c.cc.Invoke(ctx, GocflService_KeepAlive_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gocflServiceClient) OpenStorageRoot(ctx context.Context, in *OpenStorageRootRequest, opts ...grpc.CallOption) (*StorageRootHandle, error) {
+	out := new(StorageRootHandle)
+	err := c.cc.Invoke(ctx, GocflService_OpenStorageRoot_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gocflServiceClient) InitStorageRootHandle(ctx context.Context, in *InitStorageRootHandleRequest, opts ...grpc.CallOption) (*StorageRootHandle, error) {
+	out := new(StorageRootHandle)
+	err := c.cc.Invoke(ctx, GocflService_InitStorageRootHandle_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gocflServiceClient) ListObjects(ctx context.Context, in *ListObjectsRequest, opts ...grpc.CallOption) (*ListObjectsResponse, error) {
+	out := new(ListObjectsResponse)
+	err := c.cc.Invoke(ctx, GocflService_ListObjects_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gocflServiceClient) GetStorageRootDetails(ctx context.Context, in *GetStorageRootDetailsRequest, opts ...grpc.CallOption) (*StorageRootDetailsResponse, error) {
+	out := new(StorageRootDetailsResponse)
+	err := c.cc.Invoke(ctx, GocflService_GetStorageRootDetails_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gocflServiceClient) OpenObject(ctx context.Context, in *OpenObjectRequest, opts ...grpc.CallOption) (*ObjectHandle, error) {
+	out := new(ObjectHandle)
+	err := c.cc.Invoke(ctx, GocflService_OpenObject_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gocflServiceClient) InitObjectHandle(ctx context.Context, in *InitObjectHandleRequest, opts ...grpc.CallOption) (*ObjectHandle, error) {
+	out := new(ObjectHandle)
+	err := c.cc.Invoke(ctx, GocflService_InitObjectHandle_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gocflServiceClient) GetInventory(ctx context.Context, in *GetInventoryRequest, opts ...grpc.CallOption) (*InventoryResponse, error) {
+	out := new(InventoryResponse)
+	err := c.cc.Invoke(ctx, GocflService_GetInventory_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gocflServiceClient) ValidateObjectHandle(ctx context.Context, in *ValidateObjectHandleRequest, opts ...grpc.CallOption) (*ValidateObjectHandleResponse, error) {
+	out := new(ValidateObjectHandleResponse)
+	err := c.cc.Invoke(ctx, GocflService_ValidateObjectHandle_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gocflServiceClient) BeginUpdate(ctx context.Context, in *BeginUpdateRequest, opts ...grpc.CallOption) (*UpdaterHandle, error) {
+	out := new(UpdaterHandle)
+	err := c.cc.Invoke(ctx, GocflService_BeginUpdate_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gocflServiceClient) AddFile(ctx context.Context, in *AddFileRequest, opts ...grpc.CallOption) (*AddFileResponse, error) {
+	out := new(AddFileResponse)
+	err := c.cc.Invoke(ctx, GocflService_AddFile_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gocflServiceClient) AddFolder(ctx context.Context, in *AddFolderRequest, opts ...grpc.CallOption) (*AddFolderResponse, error) {
+	out := new(AddFolderResponse)
+	err := c.cc.Invoke(ctx, GocflService_AddFolder_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gocflServiceClient) DeleteFile(ctx context.Context, in *DeleteFileRequest, opts ...grpc.CallOption) (*DeleteFileResponse, error) {
+	out := new(DeleteFileResponse)
+	err := c.cc.Invoke(ctx, GocflService_DeleteFile_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gocflServiceClient) RenameFile(ctx context.Context, in *RenameFileRequest, opts ...grpc.CallOption) (*RenameFileResponse, error) {
+	out := new(RenameFileResponse)
+	err := c.cc.Invoke(ctx, GocflService_RenameFile_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gocflServiceClient) CommitUpdate(ctx context.Context, in *CommitUpdateRequest, opts ...grpc.CallOption) (*CommitUpdateResponse, error) {
+	out := new(CommitUpdateResponse)
+	err := c.cc.Invoke(ctx, GocflService_CommitUpdate_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gocflServiceClient) RollbackUpdate(ctx context.Context, in *RollbackUpdateRequest, opts ...grpc.CallOption) (*RollbackUpdateResponse, error) {
+	out := new(RollbackUpdateResponse)
+	err := c.cc.Invoke(ctx, GocflService_RollbackUpdate_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // GocflServiceServer is the server API for GocflService service.
 // All implementations must embed UnimplementedGocflServiceServer
 // for forward compatibility
 type GocflServiceServer interface {
+	// ─── Macro Operations (High-level 1-call RPCs) ───────────────────────
 	// Init initializes an empty OCFL storage root.
 	Init(*InitRequest, GocflService_InitServer) error
 	// Add adds a new object into an existing OCFL structure.
@@ -238,6 +445,41 @@ type GocflServiceServer interface {
 	Validate(*ValidateRequest, GocflService_ValidateServer) error
 	// Shutdown initiates a graceful or immediate shutdown of the gRPC server.
 	Shutdown(context.Context, *ShutdownRequest) (*ShutdownResponse, error)
+	// ─── Fine-Grained Handle Operations ──────────────────────────────────
+	// CloseHandle closes and releases an open StorageRoot, Object, or Updater handle.
+	CloseHandle(context.Context, *CloseHandleRequest) (*CloseHandleResponse, error)
+	// KeepAlive renews the lease/TTL of an open handle.
+	KeepAlive(context.Context, *KeepAliveRequest) (*KeepAliveResponse, error)
+	// OpenStorageRoot opens an existing OCFL storage root and returns a handle.
+	OpenStorageRoot(context.Context, *OpenStorageRootRequest) (*StorageRootHandle, error)
+	// InitStorageRootHandle initializes a storage root and returns an open handle.
+	InitStorageRootHandle(context.Context, *InitStorageRootHandleRequest) (*StorageRootHandle, error)
+	// ListObjects lists object folders within an open storage root.
+	ListObjects(context.Context, *ListObjectsRequest) (*ListObjectsResponse, error)
+	// GetStorageRootDetails retrieves version and layout details of an open storage root.
+	GetStorageRootDetails(context.Context, *GetStorageRootDetailsRequest) (*StorageRootDetailsResponse, error)
+	// OpenObject opens an existing OCFL object within a storage root or direct path.
+	OpenObject(context.Context, *OpenObjectRequest) (*ObjectHandle, error)
+	// InitObjectHandle initializes a new OCFL object and returns an open handle.
+	InitObjectHandle(context.Context, *InitObjectHandleRequest) (*ObjectHandle, error)
+	// GetInventory retrieves the full Inventory snapshot as a Protobuf message.
+	GetInventory(context.Context, *GetInventoryRequest) (*InventoryResponse, error)
+	// ValidateObjectHandle validates an open OCFL object.
+	ValidateObjectHandle(context.Context, *ValidateObjectHandleRequest) (*ValidateObjectHandleResponse, error)
+	// BeginUpdate starts a new version update session on an open object.
+	BeginUpdate(context.Context, *BeginUpdateRequest) (*UpdaterHandle, error)
+	// AddFile adds a file with direct content bytes into the active version.
+	AddFile(context.Context, *AddFileRequest) (*AddFileResponse, error)
+	// AddFolder adds all files from a VFS path into the active version.
+	AddFolder(context.Context, *AddFolderRequest) (*AddFolderResponse, error)
+	// DeleteFile removes a file from the active version state.
+	DeleteFile(context.Context, *DeleteFileRequest) (*DeleteFileResponse, error)
+	// RenameFile renames a file within the active version state.
+	RenameFile(context.Context, *RenameFileRequest) (*RenameFileResponse, error)
+	// CommitUpdate commits the version update and updates the object's inventory.
+	CommitUpdate(context.Context, *CommitUpdateRequest) (*CommitUpdateResponse, error)
+	// RollbackUpdate cancels the version update and discards uncommitted changes.
+	RollbackUpdate(context.Context, *RollbackUpdateRequest) (*RollbackUpdateResponse, error)
 	mustEmbedUnimplementedGocflServiceServer()
 }
 
@@ -262,6 +504,57 @@ func (UnimplementedGocflServiceServer) Validate(*ValidateRequest, GocflService_V
 }
 func (UnimplementedGocflServiceServer) Shutdown(context.Context, *ShutdownRequest) (*ShutdownResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Shutdown not implemented")
+}
+func (UnimplementedGocflServiceServer) CloseHandle(context.Context, *CloseHandleRequest) (*CloseHandleResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CloseHandle not implemented")
+}
+func (UnimplementedGocflServiceServer) KeepAlive(context.Context, *KeepAliveRequest) (*KeepAliveResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method KeepAlive not implemented")
+}
+func (UnimplementedGocflServiceServer) OpenStorageRoot(context.Context, *OpenStorageRootRequest) (*StorageRootHandle, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method OpenStorageRoot not implemented")
+}
+func (UnimplementedGocflServiceServer) InitStorageRootHandle(context.Context, *InitStorageRootHandleRequest) (*StorageRootHandle, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method InitStorageRootHandle not implemented")
+}
+func (UnimplementedGocflServiceServer) ListObjects(context.Context, *ListObjectsRequest) (*ListObjectsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListObjects not implemented")
+}
+func (UnimplementedGocflServiceServer) GetStorageRootDetails(context.Context, *GetStorageRootDetailsRequest) (*StorageRootDetailsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetStorageRootDetails not implemented")
+}
+func (UnimplementedGocflServiceServer) OpenObject(context.Context, *OpenObjectRequest) (*ObjectHandle, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method OpenObject not implemented")
+}
+func (UnimplementedGocflServiceServer) InitObjectHandle(context.Context, *InitObjectHandleRequest) (*ObjectHandle, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method InitObjectHandle not implemented")
+}
+func (UnimplementedGocflServiceServer) GetInventory(context.Context, *GetInventoryRequest) (*InventoryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetInventory not implemented")
+}
+func (UnimplementedGocflServiceServer) ValidateObjectHandle(context.Context, *ValidateObjectHandleRequest) (*ValidateObjectHandleResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ValidateObjectHandle not implemented")
+}
+func (UnimplementedGocflServiceServer) BeginUpdate(context.Context, *BeginUpdateRequest) (*UpdaterHandle, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method BeginUpdate not implemented")
+}
+func (UnimplementedGocflServiceServer) AddFile(context.Context, *AddFileRequest) (*AddFileResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AddFile not implemented")
+}
+func (UnimplementedGocflServiceServer) AddFolder(context.Context, *AddFolderRequest) (*AddFolderResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AddFolder not implemented")
+}
+func (UnimplementedGocflServiceServer) DeleteFile(context.Context, *DeleteFileRequest) (*DeleteFileResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteFile not implemented")
+}
+func (UnimplementedGocflServiceServer) RenameFile(context.Context, *RenameFileRequest) (*RenameFileResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RenameFile not implemented")
+}
+func (UnimplementedGocflServiceServer) CommitUpdate(context.Context, *CommitUpdateRequest) (*CommitUpdateResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CommitUpdate not implemented")
+}
+func (UnimplementedGocflServiceServer) RollbackUpdate(context.Context, *RollbackUpdateRequest) (*RollbackUpdateResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RollbackUpdate not implemented")
 }
 func (UnimplementedGocflServiceServer) mustEmbedUnimplementedGocflServiceServer() {}
 
@@ -399,6 +692,312 @@ func _GocflService_Shutdown_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _GocflService_CloseHandle_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CloseHandleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GocflServiceServer).CloseHandle(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GocflService_CloseHandle_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GocflServiceServer).CloseHandle(ctx, req.(*CloseHandleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GocflService_KeepAlive_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(KeepAliveRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GocflServiceServer).KeepAlive(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GocflService_KeepAlive_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GocflServiceServer).KeepAlive(ctx, req.(*KeepAliveRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GocflService_OpenStorageRoot_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(OpenStorageRootRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GocflServiceServer).OpenStorageRoot(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GocflService_OpenStorageRoot_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GocflServiceServer).OpenStorageRoot(ctx, req.(*OpenStorageRootRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GocflService_InitStorageRootHandle_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InitStorageRootHandleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GocflServiceServer).InitStorageRootHandle(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GocflService_InitStorageRootHandle_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GocflServiceServer).InitStorageRootHandle(ctx, req.(*InitStorageRootHandleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GocflService_ListObjects_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListObjectsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GocflServiceServer).ListObjects(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GocflService_ListObjects_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GocflServiceServer).ListObjects(ctx, req.(*ListObjectsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GocflService_GetStorageRootDetails_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetStorageRootDetailsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GocflServiceServer).GetStorageRootDetails(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GocflService_GetStorageRootDetails_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GocflServiceServer).GetStorageRootDetails(ctx, req.(*GetStorageRootDetailsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GocflService_OpenObject_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(OpenObjectRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GocflServiceServer).OpenObject(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GocflService_OpenObject_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GocflServiceServer).OpenObject(ctx, req.(*OpenObjectRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GocflService_InitObjectHandle_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InitObjectHandleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GocflServiceServer).InitObjectHandle(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GocflService_InitObjectHandle_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GocflServiceServer).InitObjectHandle(ctx, req.(*InitObjectHandleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GocflService_GetInventory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetInventoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GocflServiceServer).GetInventory(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GocflService_GetInventory_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GocflServiceServer).GetInventory(ctx, req.(*GetInventoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GocflService_ValidateObjectHandle_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ValidateObjectHandleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GocflServiceServer).ValidateObjectHandle(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GocflService_ValidateObjectHandle_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GocflServiceServer).ValidateObjectHandle(ctx, req.(*ValidateObjectHandleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GocflService_BeginUpdate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BeginUpdateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GocflServiceServer).BeginUpdate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GocflService_BeginUpdate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GocflServiceServer).BeginUpdate(ctx, req.(*BeginUpdateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GocflService_AddFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AddFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GocflServiceServer).AddFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GocflService_AddFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GocflServiceServer).AddFile(ctx, req.(*AddFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GocflService_AddFolder_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AddFolderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GocflServiceServer).AddFolder(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GocflService_AddFolder_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GocflServiceServer).AddFolder(ctx, req.(*AddFolderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GocflService_DeleteFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GocflServiceServer).DeleteFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GocflService_DeleteFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GocflServiceServer).DeleteFile(ctx, req.(*DeleteFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GocflService_RenameFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RenameFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GocflServiceServer).RenameFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GocflService_RenameFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GocflServiceServer).RenameFile(ctx, req.(*RenameFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GocflService_CommitUpdate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CommitUpdateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GocflServiceServer).CommitUpdate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GocflService_CommitUpdate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GocflServiceServer).CommitUpdate(ctx, req.(*CommitUpdateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GocflService_RollbackUpdate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RollbackUpdateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GocflServiceServer).RollbackUpdate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GocflService_RollbackUpdate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GocflServiceServer).RollbackUpdate(ctx, req.(*RollbackUpdateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // GocflService_ServiceDesc is the grpc.ServiceDesc for GocflService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -409,6 +1008,74 @@ var GocflService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Shutdown",
 			Handler:    _GocflService_Shutdown_Handler,
+		},
+		{
+			MethodName: "CloseHandle",
+			Handler:    _GocflService_CloseHandle_Handler,
+		},
+		{
+			MethodName: "KeepAlive",
+			Handler:    _GocflService_KeepAlive_Handler,
+		},
+		{
+			MethodName: "OpenStorageRoot",
+			Handler:    _GocflService_OpenStorageRoot_Handler,
+		},
+		{
+			MethodName: "InitStorageRootHandle",
+			Handler:    _GocflService_InitStorageRootHandle_Handler,
+		},
+		{
+			MethodName: "ListObjects",
+			Handler:    _GocflService_ListObjects_Handler,
+		},
+		{
+			MethodName: "GetStorageRootDetails",
+			Handler:    _GocflService_GetStorageRootDetails_Handler,
+		},
+		{
+			MethodName: "OpenObject",
+			Handler:    _GocflService_OpenObject_Handler,
+		},
+		{
+			MethodName: "InitObjectHandle",
+			Handler:    _GocflService_InitObjectHandle_Handler,
+		},
+		{
+			MethodName: "GetInventory",
+			Handler:    _GocflService_GetInventory_Handler,
+		},
+		{
+			MethodName: "ValidateObjectHandle",
+			Handler:    _GocflService_ValidateObjectHandle_Handler,
+		},
+		{
+			MethodName: "BeginUpdate",
+			Handler:    _GocflService_BeginUpdate_Handler,
+		},
+		{
+			MethodName: "AddFile",
+			Handler:    _GocflService_AddFile_Handler,
+		},
+		{
+			MethodName: "AddFolder",
+			Handler:    _GocflService_AddFolder_Handler,
+		},
+		{
+			MethodName: "DeleteFile",
+			Handler:    _GocflService_DeleteFile_Handler,
+		},
+		{
+			MethodName: "RenameFile",
+			Handler:    _GocflService_RenameFile_Handler,
+		},
+		{
+			MethodName: "CommitUpdate",
+			Handler:    _GocflService_CommitUpdate_Handler,
+		},
+		{
+			MethodName: "RollbackUpdate",
+			Handler:    _GocflService_RollbackUpdate_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

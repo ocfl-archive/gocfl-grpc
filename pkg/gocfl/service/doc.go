@@ -1,6 +1,9 @@
 // Package service implements the pb.GocflServiceServer gRPC service interface.
 //
-// It provides server-streaming handlers with live log multiplexing for the five core OCFL actions:
+// It provides a hybrid architecture supporting both high-level 1-call macro actions and
+// interactive, fine-grained handle-based workflows:
+//
+// 1. Macro Operations (with real-time Zerolog log streaming):
 //   - Init: Initializes a new OCFL storage root with specified OCFL version, digest algorithm, and extensions.
 //   - Add: Ingests an initial version (v1) of an object into an existing storage root.
 //   - Update: Ingests a subsequent version (v2, v3, ...) into an existing object.
@@ -8,8 +11,11 @@
 //   - Validate: Validates the conformance of an OCFL storage root or a specific OCFL object according to the OCFL specification.
 //   - Shutdown: Handles remote requests to gracefully or immediately terminate the gRPC server process.
 //
-// All operations stream structured Zerolog log entries (as LogEntry payloads) directly to the client
-// during execution, concluding with the final operation result message.
+// 2. Fine-Grained Handle Operations:
+//   - StorageRoot Handles: Open/Init storage roots, list objects, inspect root metadata.
+//   - Object Handles: Open/Init objects, retrieve immutable Inventory snapshots, validate open objects.
+//   - Updater Handles: Begin updates, add files/folders, rename, delete, commit, and rollback.
+//   - Lease Management: KeepAlive TTL renewal and automatic background eviction.
 //
 // The service operates on a virtual filesystem (VFS) abstraction supporting local filesystems,
 // zip containers as folders, and remote object storage (S3).

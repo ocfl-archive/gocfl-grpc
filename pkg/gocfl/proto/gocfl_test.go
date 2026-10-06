@@ -136,6 +136,82 @@ func (s *mockGocflServer) Shutdown(ctx context.Context, req *pb.ShutdownRequest)
 	}, nil
 }
 
+func (s *mockGocflServer) OpenStorageRoot(ctx context.Context, req *pb.OpenStorageRootRequest) (*pb.StorageRootHandle, error) {
+	return &pb.StorageRootHandle{
+		Id:            "sr-mock-123",
+		ExpiresAtUnix: time.Now().Add(10 * time.Minute).Unix(),
+	}, nil
+}
+
+func (s *mockGocflServer) OpenObject(ctx context.Context, req *pb.OpenObjectRequest) (*pb.ObjectHandle, error) {
+	return &pb.ObjectHandle{
+		Id:            "obj-mock-456",
+		ExpiresAtUnix: time.Now().Add(10 * time.Minute).Unix(),
+	}, nil
+}
+
+func (s *mockGocflServer) GetInventory(ctx context.Context, req *pb.GetInventoryRequest) (*pb.InventoryResponse, error) {
+	return &pb.InventoryResponse{
+		Inventory: &pb.Inventory{
+			Id:               "urn:test:mock",
+			Head:             "v1",
+			Type:             "https://ocfl.io/1.1/spec/#inventory",
+			DigestAlgorithm:  "sha512",
+			ContentDirectory: "content",
+			Manifest: map[string]*pb.DigestPaths{
+				"abc123": {Paths: []string{"v1/content/file.txt"}},
+			},
+			Versions: map[string]*pb.Version{
+				"v1": {
+					Created: "2026-10-06T12:00:00Z",
+					Message: "initial mock version",
+					User:    &pb.User{Name: "Tester", Address: "tester@example.com"},
+					State: map[string]*pb.DigestPaths{
+						"abc123": {Paths: []string{"file.txt"}},
+					},
+				},
+			},
+		},
+	}, nil
+}
+
+func (s *mockGocflServer) BeginUpdate(ctx context.Context, req *pb.BeginUpdateRequest) (*pb.UpdaterHandle, error) {
+	return &pb.UpdaterHandle{
+		Id:            "upd-mock-789",
+		ExpiresAtUnix: time.Now().Add(10 * time.Minute).Unix(),
+	}, nil
+}
+
+func (s *mockGocflServer) AddFile(ctx context.Context, req *pb.AddFileRequest) (*pb.AddFileResponse, error) {
+	return &pb.AddFileResponse{
+		Success: true,
+		Message: "file added",
+		Digest:  "def456",
+	}, nil
+}
+
+func (s *mockGocflServer) CommitUpdate(ctx context.Context, req *pb.CommitUpdateRequest) (*pb.CommitUpdateResponse, error) {
+	return &pb.CommitUpdateResponse{
+		Success:     true,
+		Message:     "committed",
+		HeadVersion: "v2",
+	}, nil
+}
+
+func (s *mockGocflServer) CloseHandle(ctx context.Context, req *pb.CloseHandleRequest) (*pb.CloseHandleResponse, error) {
+	return &pb.CloseHandleResponse{
+		Success: true,
+		Message: "closed",
+	}, nil
+}
+
+func (s *mockGocflServer) KeepAlive(ctx context.Context, req *pb.KeepAliveRequest) (*pb.KeepAliveResponse, error) {
+	return &pb.KeepAliveResponse{
+		Success:       true,
+		ExpiresAtUnix: time.Now().Add(15 * time.Minute).Unix(),
+	}, nil
+}
+
 func TestGocflGRPCService(t *testing.T) {
 	bufferSize := 1024 * 1024
 	lis := bufconn.Listen(bufferSize)
@@ -332,6 +408,62 @@ func TestGocflGRPCService(t *testing.T) {
 		t.Errorf("Expected Shutdown success, got %+v", shutResp)
 	}
 
+	// Test Handle-based operations
+	srHandle, err := client.OpenStorageRoot(ctx, &pb.OpenStorageRootRequest{OcflPath: "/tmp/test_ocfl"})
+	if err != nil || srHandle.GetId() == "" {
+		t.Fatalf("OpenStorageRoot failed: %v", err)
+	}
+
+	objHandle, err := client.OpenObject(ctx, &pb.OpenObjectRequest{
+		StoragerootHandleId: srHandle.GetId(),
+		ObjectId:            "urn:test:1",
+	})
+	if err != nil || objHandle.GetId() == "" {
+		t.Fatalf("OpenObject failed: %v", err)
+	}
+
+	invResp, err := client.GetInventory(ctx, &pb.GetInventoryRequest{ObjectHandleId: objHandle.GetId()})
+	if err != nil || invResp.GetInventory() == nil || invResp.GetInventory().GetHead() != "v1" {
+		t.Fatalf("GetInventory failed: %v, resp: %+v", err, invResp)
+	}
+
+	updHandle, err := client.BeginUpdate(ctx, &pb.BeginUpdateRequest{
+		ObjectHandleId: objHandle.GetId(),
+		Message:        "adding file via handle",
+	})
+	if err != nil || updHandle.GetId() == "" {
+		t.Fatalf("BeginUpdate failed: %v", err)
+	}
+
+	addFileResp, err := client.AddFile(ctx, &pb.AddFileRequest{
+		UpdaterHandleId: updHandle.GetId(),
+		Path:            "hello.txt",
+		Content:         []byte("hello world"),
+	})
+	if err != nil || !addFileResp.GetSuccess() {
+		t.Fatalf("AddFile failed: %v", err)
+	}
+
+	commitResp, err := client.CommitUpdate(ctx, &pb.CommitUpdateRequest{
+		UpdaterHandleId: updHandle.GetId(),
+	})
+	if err != nil || !commitResp.GetSuccess() || commitResp.GetHeadVersion() != "v2" {
+		t.Fatalf("CommitUpdate failed: %v", err)
+	}
+
+	keepResp, err := client.KeepAlive(ctx, &pb.KeepAliveRequest{
+		HandleId:      srHandle.GetId(),
+		ExtendSeconds: 600,
+	})
+	if err != nil || !keepResp.GetSuccess() {
+		t.Fatalf("KeepAlive failed: %v", err)
+	}
+
+	closeResp, err := client.CloseHandle(ctx, &pb.CloseHandleRequest{HandleId: srHandle.GetId()})
+	if err != nil || !closeResp.GetSuccess() {
+		t.Fatalf("CloseHandle failed: %v", err)
+	}
+
 	// Verify Protobuf Marshalling
 	data, err := proto.Marshal(createReq)
 	if err != nil {
@@ -343,5 +475,18 @@ func TestGocflGRPCService(t *testing.T) {
 	}
 	if unmarshaled.GetObjectId() != createReq.GetObjectId() {
 		t.Errorf("Unmarshaled object id mismatch: got %s, want %s", unmarshaled.GetObjectId(), createReq.GetObjectId())
+	}
+
+	// Verify Inventory Protobuf Marshalling
+	invData, err := proto.Marshal(invResp.GetInventory())
+	if err != nil {
+		t.Fatalf("Inventory proto.Marshal failed: %v", err)
+	}
+	var unmarshaledInv pb.Inventory
+	if err := proto.Unmarshal(invData, &unmarshaledInv); err != nil {
+		t.Fatalf("Inventory proto.Unmarshal failed: %v", err)
+	}
+	if unmarshaledInv.GetId() != "urn:test:mock" {
+		t.Errorf("Unmarshaled inventory ID mismatch: got %s, want urn:test:mock", unmarshaledInv.GetId())
 	}
 }

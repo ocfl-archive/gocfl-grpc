@@ -254,6 +254,114 @@ fmt.Printf("Server shutdown response: %s (success=%v)\n", shutResp.Message, shut
 
 ---
 
+## Fine-Grained Handle Operations (Hybrid Architecture)
+
+In addition to the 1-call macro actions, `gocfl-grpc` supports fine-grained handle-based workflows for stateful, interactive OCFL management without reparsing the storage root or object on every request.
+
+### 1. Opening Storage Roots and Objects
+
+```go
+// 1. Open StorageRoot Handle
+srHandle, err := cl.OpenStorageRoot(ctx, &pb.OpenStorageRootRequest{
+    OcflPath: "/path/to/storage_root",
+})
+defer cl.CloseHandle(ctx, &pb.CloseHandleRequest{HandleId: srHandle.Id})
+
+// 2. Open Object Handle within the StorageRoot
+objHandle, err := cl.OpenObject(ctx, &pb.OpenObjectRequest{
+    StoragerootHandleId: srHandle.Id,
+    ObjectId:            "urn:archive:my-object-1",
+})
+defer cl.CloseHandle(ctx, &pb.CloseHandleRequest{HandleId: objHandle.Id})
+```
+
+### 2. Inspecting the Inventory (Protobuf Data Object)
+
+The full inventory is retrieved as an immutable protobuf snapshot without roundtrip latency:
+
+```go
+invResp, err := cl.GetInventory(ctx, &pb.GetInventoryRequest{
+    ObjectHandleId: objHandle.Id,
+})
+if err != nil {
+    log.Fatalf("failed to get inventory: %v", err)
+}
+
+inv := invResp.Inventory
+fmt.Printf("Object: %s, Head: %s, Spec: %s\n", inv.Id, inv.Head, inv.Type)
+
+// Iterate manifest files
+for digest, paths := range inv.Manifest {
+    fmt.Printf("Digest %s -> %v\n", digest, paths.Paths)
+}
+
+// Iterate versions history
+for verNum, ver := range inv.Versions {
+    fmt.Printf("Version %s: created at %s, message: %q, author: %s\n",
+        verNum, ver.Created, ver.Message, ver.User.GetName())
+}
+```
+
+### 3. Interactive Version Updating (`UpdaterHandle`)
+
+```go
+// 1. Begin version update
+updHandle, err := cl.BeginUpdate(ctx, &pb.BeginUpdateRequest{
+    ObjectHandleId: objHandle.Id,
+    Message:        "Add quarterly data and document",
+    User: &pb.User{
+        Name:    "Alice Archivist",
+        Address: "mailto:alice@example.org",
+    },
+})
+
+// 2. Add files directly via VFS path (zero bytes in payload, fully streamed by server)
+_, err = cl.AddFile(ctx, &pb.AddFileRequest{
+    UpdaterHandleId: updHandle.Id,
+    SrcPath:         "source_data/quarterly.csv", // path in VFS
+    DestPath:        "data/quarterly.csv",        // logical path in OCFL version
+})
+
+// Or add file content directly via in-memory bytes if needed
+_, err = cl.AddFile(ctx, &pb.AddFileRequest{
+    UpdaterHandleId: updHandle.Id,
+    Path:            "data/notes.txt",
+    Content:         []byte("Additional notes\n"),
+})
+
+// 3. Add whole folders from server VFS if needed
+_, err = cl.AddFolder(ctx, &pb.AddFolderRequest{
+    UpdaterHandleId: updHandle.Id,
+    SrcPath:         "/mnt/staging/extra_docs",
+})
+
+// 4. Rename or delete existing files in state
+_, err = cl.RenameFile(ctx, &pb.RenameFileRequest{
+    UpdaterHandleId: updHandle.Id,
+    SourcePath:      "data/old_name.csv",
+    DestPath:        "data/new_name.csv",
+})
+
+// 5. Commit the update (atomically writes new version and updates inventory)
+commitResp, err := cl.CommitUpdate(ctx, &pb.CommitUpdateRequest{
+    UpdaterHandleId: updHandle.Id,
+})
+fmt.Printf("Committed version %s. New head: %s\n", commitResp.HeadVersion, commitResp.NewInventory.Head)
+```
+
+### 4. Lease & TTL Management (`KeepAlive`)
+
+Handles are automatically evicted on the server after the TTL (default 15 minutes) if unused. Long-running clients can refresh their leases at any time:
+
+```go
+keepResp, err := cl.KeepAlive(ctx, &pb.KeepAliveRequest{
+    HandleId:      srHandle.Id,
+    ExtendSeconds: 1800, // extend by 30 minutes
+})
+```
+
+---
+
 ## Connection Lifecycle
 
 Always ensure client connections are properly closed when shutting down:

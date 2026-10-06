@@ -57,6 +57,25 @@ type GocflClient interface {
 	CreateStream(ctx context.Context, req *pb.CreateRequest, opts ...grpc.CallOption) (pb.GocflService_CreateClient, error)
 	ValidateStream(ctx context.Context, req *pb.ValidateRequest, opts ...grpc.CallOption) (pb.GocflService_ValidateClient, error)
 
+	// Fine-grained Handle Operations
+	CloseHandle(ctx context.Context, req *pb.CloseHandleRequest, opts ...CallOption) (*pb.CloseHandleResponse, error)
+	KeepAlive(ctx context.Context, req *pb.KeepAliveRequest, opts ...CallOption) (*pb.KeepAliveResponse, error)
+	OpenStorageRoot(ctx context.Context, req *pb.OpenStorageRootRequest, opts ...CallOption) (*pb.StorageRootHandle, error)
+	InitStorageRootHandle(ctx context.Context, req *pb.InitStorageRootHandleRequest, opts ...CallOption) (*pb.StorageRootHandle, error)
+	ListObjects(ctx context.Context, req *pb.ListObjectsRequest, opts ...CallOption) (*pb.ListObjectsResponse, error)
+	GetStorageRootDetails(ctx context.Context, req *pb.GetStorageRootDetailsRequest, opts ...CallOption) (*pb.StorageRootDetailsResponse, error)
+	OpenObject(ctx context.Context, req *pb.OpenObjectRequest, opts ...CallOption) (*pb.ObjectHandle, error)
+	InitObjectHandle(ctx context.Context, req *pb.InitObjectHandleRequest, opts ...CallOption) (*pb.ObjectHandle, error)
+	GetInventory(ctx context.Context, req *pb.GetInventoryRequest, opts ...CallOption) (*pb.InventoryResponse, error)
+	ValidateObjectHandle(ctx context.Context, req *pb.ValidateObjectHandleRequest, opts ...CallOption) (*pb.ValidateObjectHandleResponse, error)
+	BeginUpdate(ctx context.Context, req *pb.BeginUpdateRequest, opts ...CallOption) (*pb.UpdaterHandle, error)
+	AddFile(ctx context.Context, req *pb.AddFileRequest, opts ...CallOption) (*pb.AddFileResponse, error)
+	AddFolder(ctx context.Context, req *pb.AddFolderRequest, opts ...CallOption) (*pb.AddFolderResponse, error)
+	DeleteFile(ctx context.Context, req *pb.DeleteFileRequest, opts ...CallOption) (*pb.DeleteFileResponse, error)
+	RenameFile(ctx context.Context, req *pb.RenameFileRequest, opts ...CallOption) (*pb.RenameFileResponse, error)
+	CommitUpdate(ctx context.Context, req *pb.CommitUpdateRequest, opts ...CallOption) (*pb.CommitUpdateResponse, error)
+	RollbackUpdate(ctx context.Context, req *pb.RollbackUpdateRequest, opts ...CallOption) (*pb.RollbackUpdateResponse, error)
+
 	GRPCClient() pb.GocflServiceClient
 	Conn() *grpc.ClientConn
 	Close() error
@@ -420,4 +439,157 @@ func (c *Client) Shutdown(ctx context.Context, req *pb.ShutdownRequest, opts ...
 	}
 
 	return c.grpcClient.Shutdown(ctx, req, co.grpcOpts...)
+}
+
+// CloseHandle releases an active StorageRoot, Object, or Updater handle.
+func (c *Client) CloseHandle(ctx context.Context, req *pb.CloseHandleRequest, opts ...CallOption) (*pb.CloseHandleResponse, error) {
+	co := &callOptions{}
+	for _, o := range opts {
+		o(co)
+	}
+	return c.grpcClient.CloseHandle(ctx, req, co.grpcOpts...)
+}
+
+// KeepAlive renews the lease/TTL of an open handle.
+func (c *Client) KeepAlive(ctx context.Context, req *pb.KeepAliveRequest, opts ...CallOption) (*pb.KeepAliveResponse, error) {
+	co := &callOptions{}
+	for _, o := range opts {
+		o(co)
+	}
+	return c.grpcClient.KeepAlive(ctx, req, co.grpcOpts...)
+}
+
+// OpenStorageRoot opens an existing OCFL storage root and returns a handle.
+func (c *Client) OpenStorageRoot(ctx context.Context, req *pb.OpenStorageRootRequest, opts ...CallOption) (*pb.StorageRootHandle, error) {
+	co := &callOptions{}
+	for _, o := range opts {
+		o(co)
+	}
+	return c.grpcClient.OpenStorageRoot(ctx, req, co.grpcOpts...)
+}
+
+// InitStorageRootHandle initializes a storage root and returns an open handle.
+func (c *Client) InitStorageRootHandle(ctx context.Context, req *pb.InitStorageRootHandleRequest, opts ...CallOption) (*pb.StorageRootHandle, error) {
+	co := &callOptions{}
+	for _, o := range opts {
+		o(co)
+	}
+	return c.grpcClient.InitStorageRootHandle(ctx, req, co.grpcOpts...)
+}
+
+// ListObjects lists object folders within an open storage root.
+func (c *Client) ListObjects(ctx context.Context, req *pb.ListObjectsRequest, opts ...CallOption) (*pb.ListObjectsResponse, error) {
+	co := &callOptions{}
+	for _, o := range opts {
+		o(co)
+	}
+	return c.grpcClient.ListObjects(ctx, req, co.grpcOpts...)
+}
+
+// GetStorageRootDetails retrieves version and layout details of an open storage root.
+func (c *Client) GetStorageRootDetails(ctx context.Context, req *pb.GetStorageRootDetailsRequest, opts ...CallOption) (*pb.StorageRootDetailsResponse, error) {
+	co := &callOptions{}
+	for _, o := range opts {
+		o(co)
+	}
+	return c.grpcClient.GetStorageRootDetails(ctx, req, co.grpcOpts...)
+}
+
+// OpenObject opens an existing OCFL object within a storage root or direct path.
+func (c *Client) OpenObject(ctx context.Context, req *pb.OpenObjectRequest, opts ...CallOption) (*pb.ObjectHandle, error) {
+	co := &callOptions{}
+	for _, o := range opts {
+		o(co)
+	}
+	return c.grpcClient.OpenObject(ctx, req, co.grpcOpts...)
+}
+
+// InitObjectHandle initializes a new OCFL object and returns an open handle.
+func (c *Client) InitObjectHandle(ctx context.Context, req *pb.InitObjectHandleRequest, opts ...CallOption) (*pb.ObjectHandle, error) {
+	co := &callOptions{}
+	for _, o := range opts {
+		o(co)
+	}
+	return c.grpcClient.InitObjectHandle(ctx, req, co.grpcOpts...)
+}
+
+// GetInventory retrieves the full Inventory snapshot as a Protobuf message.
+func (c *Client) GetInventory(ctx context.Context, req *pb.GetInventoryRequest, opts ...CallOption) (*pb.InventoryResponse, error) {
+	co := &callOptions{}
+	for _, o := range opts {
+		o(co)
+	}
+	return c.grpcClient.GetInventory(ctx, req, co.grpcOpts...)
+}
+
+// ValidateObjectHandle validates an open OCFL object.
+func (c *Client) ValidateObjectHandle(ctx context.Context, req *pb.ValidateObjectHandleRequest, opts ...CallOption) (*pb.ValidateObjectHandleResponse, error) {
+	co := &callOptions{}
+	for _, o := range opts {
+		o(co)
+	}
+	return c.grpcClient.ValidateObjectHandle(ctx, req, co.grpcOpts...)
+}
+
+// BeginUpdate starts a new version update session on an open object.
+func (c *Client) BeginUpdate(ctx context.Context, req *pb.BeginUpdateRequest, opts ...CallOption) (*pb.UpdaterHandle, error) {
+	co := &callOptions{}
+	for _, o := range opts {
+		o(co)
+	}
+	return c.grpcClient.BeginUpdate(ctx, req, co.grpcOpts...)
+}
+
+// AddFile adds a file with direct content bytes into the active version.
+func (c *Client) AddFile(ctx context.Context, req *pb.AddFileRequest, opts ...CallOption) (*pb.AddFileResponse, error) {
+	co := &callOptions{}
+	for _, o := range opts {
+		o(co)
+	}
+	return c.grpcClient.AddFile(ctx, req, co.grpcOpts...)
+}
+
+// AddFolder adds all files from a VFS path into the active version.
+func (c *Client) AddFolder(ctx context.Context, req *pb.AddFolderRequest, opts ...CallOption) (*pb.AddFolderResponse, error) {
+	co := &callOptions{}
+	for _, o := range opts {
+		o(co)
+	}
+	return c.grpcClient.AddFolder(ctx, req, co.grpcOpts...)
+}
+
+// DeleteFile removes a file from the active version state.
+func (c *Client) DeleteFile(ctx context.Context, req *pb.DeleteFileRequest, opts ...CallOption) (*pb.DeleteFileResponse, error) {
+	co := &callOptions{}
+	for _, o := range opts {
+		o(co)
+	}
+	return c.grpcClient.DeleteFile(ctx, req, co.grpcOpts...)
+}
+
+// RenameFile renames a file within the active version state.
+func (c *Client) RenameFile(ctx context.Context, req *pb.RenameFileRequest, opts ...CallOption) (*pb.RenameFileResponse, error) {
+	co := &callOptions{}
+	for _, o := range opts {
+		o(co)
+	}
+	return c.grpcClient.RenameFile(ctx, req, co.grpcOpts...)
+}
+
+// CommitUpdate commits the version update and updates the object's inventory.
+func (c *Client) CommitUpdate(ctx context.Context, req *pb.CommitUpdateRequest, opts ...CallOption) (*pb.CommitUpdateResponse, error) {
+	co := &callOptions{}
+	for _, o := range opts {
+		o(co)
+	}
+	return c.grpcClient.CommitUpdate(ctx, req, co.grpcOpts...)
+}
+
+// RollbackUpdate cancels the version update and discards uncommitted changes.
+func (c *Client) RollbackUpdate(ctx context.Context, req *pb.RollbackUpdateRequest, opts ...CallOption) (*pb.RollbackUpdateResponse, error) {
+	co := &callOptions{}
+	for _, o := range opts {
+		o(co)
+	}
+	return c.grpcClient.RollbackUpdate(ctx, req, co.grpcOpts...)
 }

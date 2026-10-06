@@ -558,3 +558,203 @@ func TestServerShutdownIntegration(t *testing.T) {
 		require.Error(t, err, "Expected error on stopped server")
 	})
 }
+
+// TestFineGrainedHandlesIntegration verifies interactive multi-step operations using the hybrid handle API.
+func TestFineGrainedHandlesIntegration(t *testing.T) {
+	server, addr := startIntegrationServer(t)
+	defer server.GracefulStop()
+
+	cl, err := client.NewClient(addr, client.WithInsecure())
+	require.NoError(t, err)
+	defer func() { _ = cl.Close() }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	tempDir := t.TempDir()
+	srPath := filepath.ToSlash(filepath.Join(tempDir, "handle_ocfl_store"))
+
+	// 1. Initialize StorageRoot via Handle
+	srHandle, err := cl.InitStorageRootHandle(ctx, &pb.InitStorageRootHandleRequest{
+		OcflPath:    srPath,
+		OcflVersion: "1.1",
+		Digest:      "sha512",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, srHandle.GetId())
+
+	// 2. Query StorageRoot details and verify initially empty object list
+	srDetails, err := cl.GetStorageRootDetails(ctx, &pb.GetStorageRootDetailsRequest{
+		StoragerootHandleId: srHandle.GetId(),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "1.1", srDetails.GetOcflVersion())
+	assert.Equal(t, "sha512", srDetails.GetDigestAlgorithm())
+
+	listResp, err := cl.ListObjects(ctx, &pb.ListObjectsRequest{
+		StoragerootHandleId: srHandle.GetId(),
+	})
+	require.NoError(t, err)
+	assert.Empty(t, listResp.GetObjectFolders())
+
+	// 3. Initialize new Object within the StorageRoot Handle
+	objID := "urn:hybrid:archive:1"
+	objHandle, err := cl.InitObjectHandle(ctx, &pb.InitObjectHandleRequest{
+		StoragerootHandleId: srHandle.GetId(),
+		ObjectId:            objID,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, objHandle.GetId())
+
+	// 4. Begin Update v1
+	updHandle1, err := cl.BeginUpdate(ctx, &pb.BeginUpdateRequest{
+		ObjectHandleId: objHandle.GetId(),
+		Message:        "Initial ingest v1 via handle API",
+		User: &pb.User{
+			Name:    "Alice Archivist",
+			Address: "mailto:alice@example.org",
+		},
+	})
+	require.NoError(t, err)
+
+	// 5. Add files directly via VFS path and data bytes
+	vfsReportFile := filepath.ToSlash(filepath.Join(tempDir, "report_from_vfs.txt"))
+	require.NoError(t, os.WriteFile(vfsReportFile, []byte("Annual report data for 2026 via VFS stream."), 0644))
+
+	addFileResp1, err := cl.AddFile(ctx, &pb.AddFileRequest{
+		UpdaterHandleId: updHandle1.GetId(),
+		SrcPath:         vfsReportFile,
+		DestPath:        "documents/report.txt",
+	})
+	require.NoError(t, err)
+	assert.True(t, addFileResp1.GetSuccess())
+
+	addFileResp2, err := cl.AddFile(ctx, &pb.AddFileRequest{
+		UpdaterHandleId: updHandle1.GetId(),
+		Path:            "metadata.json",
+		Content:         []byte(`{"title":"Annual Report","year":2026}`),
+	})
+	require.NoError(t, err)
+	assert.True(t, addFileResp2.GetSuccess())
+
+	// 6. Commit Update v1 and verify returned Inventory snapshot
+	commitResp1, err := cl.CommitUpdate(ctx, &pb.CommitUpdateRequest{
+		UpdaterHandleId: updHandle1.GetId(),
+	})
+	require.NoError(t, err)
+	assert.True(t, commitResp1.GetSuccess())
+	assert.Equal(t, "v1", commitResp1.GetHeadVersion())
+	require.NotNil(t, commitResp1.GetNewInventory())
+	assert.Equal(t, objID, commitResp1.GetNewInventory().GetId())
+	assert.Equal(t, "v1", commitResp1.GetNewInventory().GetHead())
+	assert.Len(t, commitResp1.GetNewInventory().GetVersions(), 1)
+
+	// 7. Inspect full Inventory snapshot via GetInventory RPC
+	invResp1, err := cl.GetInventory(ctx, &pb.GetInventoryRequest{
+		ObjectHandleId: objHandle.GetId(),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, invResp1.GetInventory())
+	assert.Equal(t, objID, invResp1.GetInventory().GetId())
+	assert.Equal(t, "v1", invResp1.GetInventory().GetHead())
+
+	// 8. Validate Object via Handle
+	valResp, err := cl.ValidateObjectHandle(ctx, &pb.ValidateObjectHandleRequest{
+		ObjectHandleId: objHandle.GetId(),
+	})
+	require.NoError(t, err)
+	assert.True(t, valResp.GetIsValid())
+
+	// 9. Begin Update v2: rename, modify, and add a directory from VFS
+	updHandle2, err := cl.BeginUpdate(ctx, &pb.BeginUpdateRequest{
+		ObjectHandleId: objHandle.GetId(),
+		Message:        "Second update v2: rename report and add attachments",
+		User: &pb.User{
+			Name:    "Alice Archivist",
+			Address: "mailto:alice@example.org",
+		},
+	})
+	require.NoError(t, err)
+
+	// 9a. Rename file within object state
+	renameResp, err := cl.RenameFile(ctx, &pb.RenameFileRequest{
+		UpdaterHandleId: updHandle2.GetId(),
+		SourcePath:      "documents/report.txt",
+		DestPath:        "documents/annual_report_2026.txt",
+	})
+	require.NoError(t, err)
+	assert.True(t, renameResp.GetSuccess())
+
+	// 9b. Add folder from VFS
+	extraDir := filepath.Join(tempDir, "extra_attachments")
+	require.NoError(t, os.MkdirAll(extraDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(extraDir, "appendix.txt"), []byte("Appendix data."), 0644))
+
+	addFolderResp, err := cl.AddFolder(ctx, &pb.AddFolderRequest{
+		UpdaterHandleId: updHandle2.GetId(),
+		SrcPath:         filepath.ToSlash(extraDir),
+		Area:            "",
+	})
+	require.NoError(t, err)
+	assert.True(t, addFolderResp.GetSuccess())
+
+	// 9c. Commit v2
+	commitResp2, err := cl.CommitUpdate(ctx, &pb.CommitUpdateRequest{
+		UpdaterHandleId: updHandle2.GetId(),
+	})
+	require.NoError(t, err)
+	assert.True(t, commitResp2.GetSuccess())
+	assert.Equal(t, "v2", commitResp2.GetHeadVersion())
+	require.NotNil(t, commitResp2.GetNewInventory())
+	assert.Equal(t, "v2", commitResp2.GetNewInventory().GetHead())
+	assert.Len(t, commitResp2.GetNewInventory().GetVersions(), 2)
+
+	// 10. Verify StorageRoot list now lists the object folder
+	listResp2, err := cl.ListObjects(ctx, &pb.ListObjectsRequest{
+		StoragerootHandleId: srHandle.GetId(),
+	})
+	require.NoError(t, err)
+	assert.NotEmpty(t, listResp2.GetObjectFolders())
+
+	// 11. Test KeepAlive and CloseHandle
+	keepResp, err := cl.KeepAlive(ctx, &pb.KeepAliveRequest{
+		HandleId:      objHandle.GetId(),
+		ExtendSeconds: 1800,
+	})
+	require.NoError(t, err)
+	assert.True(t, keepResp.GetSuccess())
+
+	closeObjResp, err := cl.CloseHandle(ctx, &pb.CloseHandleRequest{
+		HandleId: objHandle.GetId(),
+	})
+	require.NoError(t, err)
+	assert.True(t, closeObjResp.GetSuccess())
+
+	closeSrResp, err := cl.CloseHandle(ctx, &pb.CloseHandleRequest{
+		HandleId: srHandle.GetId(),
+	})
+	require.NoError(t, err)
+	assert.True(t, closeSrResp.GetSuccess())
+
+	// 12. Re-open StorageRoot and Object to test OpenStorageRoot and OpenObject
+	srHandle2, err := cl.OpenStorageRoot(ctx, &pb.OpenStorageRootRequest{
+		OcflPath: srPath,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, srHandle2.GetId())
+	defer func() { _, _ = cl.CloseHandle(ctx, &pb.CloseHandleRequest{HandleId: srHandle2.GetId()}) }()
+
+	objHandle2, err := cl.OpenObject(ctx, &pb.OpenObjectRequest{
+		StoragerootHandleId: srHandle2.GetId(),
+		ObjectId:            objID,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, objHandle2.GetId())
+	defer func() { _, _ = cl.CloseHandle(ctx, &pb.CloseHandleRequest{HandleId: objHandle2.GetId()}) }()
+
+	invResp2, err := cl.GetInventory(ctx, &pb.GetInventoryRequest{
+		ObjectHandleId: objHandle2.GetId(),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "v2", invResp2.GetInventory().GetHead())
+}

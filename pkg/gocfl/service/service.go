@@ -42,10 +42,26 @@ type GocflService struct {
 	shutdownMu                    sync.Mutex
 	shutdownFunc                  func(force bool)
 	allowAPIShutdown              bool
+	handleManager                 *HandleManager
+	handleTTL                     time.Duration
 }
 
 // Option configures a GocflService instance.
 type Option func(*GocflService)
+
+// WithHandleTTL sets the lease duration for handles.
+func WithHandleTTL(ttl time.Duration) Option {
+	return func(s *GocflService) {
+		s.handleTTL = ttl
+	}
+}
+
+// WithHandleManager sets a custom HandleManager.
+func WithHandleManager(hm *HandleManager) Option {
+	return func(s *GocflService) {
+		s.handleManager = hm
+	}
+}
 
 // WithShutdownFunc sets a callback to be invoked when a gRPC shutdown request is received.
 func WithShutdownFunc(fn func(force bool)) Option {
@@ -168,6 +184,10 @@ func NewGocflService(opts ...Option) (*GocflService, error) {
 		_, _ = indexerutil.OptimizeConfig(s.conf.Indexer, s.logger)
 	}
 
+	if s.handleManager == nil {
+		s.handleManager = NewHandleManager(s.handleTTL, s.logger)
+	}
+
 	ocflLogger := s.newLogger(context.Background(), version.Default)
 	ext_NNNN_migration.Init(&s.conf.Migration, nil, ocflLogger)
 	ext_NNNN_thumbnail.Init(s.conf.Thumbnail, nil, ocflLogger)
@@ -175,6 +195,14 @@ func NewGocflService(opts ...Option) (*GocflService, error) {
 	ext_NNNN_metafile.Init(s.vfs, ocflLogger)
 
 	return s, nil
+}
+
+// Close gracefully closes the service and all active handles.
+func (s *GocflService) Close() error {
+	if s.handleManager != nil {
+		s.handleManager.Close()
+	}
+	return nil
 }
 
 func (s *GocflService) newLogger(ctx context.Context, ver version.OCFLVersion) ocfllogger.OCFLLogger {
@@ -239,7 +267,11 @@ func (s *GocflService) Init(req *pb.InitRequest, stream pb.GocflService_InitServ
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to create subfs for storage root '%s': %v", srPath, err)
 	}
-	defer func() { _ = closer.Close() }()
+	defer func() {
+		if closer != nil {
+			_ = closer.Close()
+		}
+	}()
 
 	extFS := s.defaultStorageRootExtensionFS
 	if req.GetDefaultStoragerootExtensions() != "" {
@@ -250,7 +282,11 @@ func (s *GocflService) Init(req *pb.InitRequest, stream pb.GocflService_InitServ
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to initialize storage root: %v", err)
 	}
-	defer func() { _ = sr.Close() }()
+	defer func() {
+		if sr != nil {
+			_ = sr.Close()
+		}
+	}()
 
 	streamMu.Lock()
 	defer streamMu.Unlock()
@@ -290,7 +326,11 @@ func (s *GocflService) Add(req *pb.AddRequest, stream pb.GocflService_AddServer)
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to create subfs for storage root '%s': %v", srPath, err)
 	}
-	defer func() { _ = closer.Close() }()
+	defer func() {
+		if closer != nil {
+			_ = closer.Close()
+		}
+	}()
 
 	ocflVer, err := util.GetStorageRootVersion(storageRootFS)
 	if err != nil {
@@ -303,7 +343,11 @@ func (s *GocflService) Add(req *pb.AddRequest, stream pb.GocflService_AddServer)
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to load storage root: %v", err)
 	}
-	defer func() { _ = sr.Close() }()
+	defer func() {
+		if sr != nil {
+			_ = sr.Close()
+		}
+	}()
 
 	exists, err := sr.ObjectExists(req.GetObjectId())
 	if err != nil {
@@ -322,7 +366,11 @@ func (s *GocflService) Add(req *pb.AddRequest, stream pb.GocflService_AddServer)
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to create subfs for object folder '%s': %v", objFolder, err)
 	}
-	defer func() { _ = objCloser.Close() }()
+	defer func() {
+		if objCloser != nil {
+			_ = objCloser.Close()
+		}
+	}()
 
 	extFS := s.defaultObjectExtensionFS
 	if req.GetDefaultObjectExtensions() != "" {
@@ -341,7 +389,11 @@ func (s *GocflService) Add(req *pb.AddRequest, stream pb.GocflService_AddServer)
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to initialize object '%s': %v", req.GetObjectId(), err)
 	}
-	defer func() { _ = obj.Close() }()
+	defer func() {
+		if obj != nil {
+			_ = obj.Close()
+		}
+	}()
 
 	userName := ""
 	userAddress := ""
@@ -396,6 +448,24 @@ func (s *GocflService) Add(req *pb.AddRequest, stream pb.GocflService_AddServer)
 		versionStr = obj.GetInventory().GetHead().String()
 	}
 
+	if err := obj.Close(); err != nil {
+		return status.Errorf(codes.Internal, "failed to close object: %v", err)
+	}
+	obj = nil
+
+	if objCloser != nil {
+		_ = objCloser.Close()
+		objCloser = nil
+	}
+	if sr != nil {
+		_ = sr.Close()
+		sr = nil
+	}
+	if closer != nil {
+		_ = closer.Close()
+		closer = nil
+	}
+
 	streamMu.Lock()
 	defer streamMu.Unlock()
 	return stream.Send(&pb.AddResponse{
@@ -436,7 +506,11 @@ func (s *GocflService) Update(req *pb.UpdateRequest, stream pb.GocflService_Upda
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to create subfs for storage root '%s': %v", srPath, err)
 	}
-	defer func() { _ = closer.Close() }()
+	defer func() {
+		if closer != nil {
+			_ = closer.Close()
+		}
+	}()
 
 	ocflVer, err := util.GetStorageRootVersion(storageRootFS)
 	if err != nil {
@@ -449,7 +523,11 @@ func (s *GocflService) Update(req *pb.UpdateRequest, stream pb.GocflService_Upda
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to load storage root: %v", err)
 	}
-	defer func() { _ = sr.Close() }()
+	defer func() {
+		if sr != nil {
+			_ = sr.Close()
+		}
+	}()
 
 	objFolder, err := sr.IdToFolder(req.GetObjectId())
 	if err != nil {
@@ -460,13 +538,21 @@ func (s *GocflService) Update(req *pb.UpdateRequest, stream pb.GocflService_Upda
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to create subfs for object folder '%s': %v", objFolder, err)
 	}
-	defer func() { _ = objCloser.Close() }()
+	defer func() {
+		if objCloser != nil {
+			_ = objCloser.Close()
+		}
+	}()
 
 	obj, err := ocfl.LoadObject(ctx, objFS, req.GetExtensionParams(), logger)
 	if err != nil {
 		return status.Errorf(codes.NotFound, "failed to load object '%s': %v", req.GetObjectId(), err)
 	}
-	defer func() { _ = obj.Close() }()
+	defer func() {
+		if obj != nil {
+			_ = obj.Close()
+		}
+	}()
 
 	userName := ""
 	userAddress := ""
@@ -521,6 +607,24 @@ func (s *GocflService) Update(req *pb.UpdateRequest, stream pb.GocflService_Upda
 		versionStr = obj.GetInventory().GetHead().String()
 	}
 
+	if err := obj.Close(); err != nil {
+		return status.Errorf(codes.Internal, "failed to close object: %v", err)
+	}
+	obj = nil
+
+	if objCloser != nil {
+		_ = objCloser.Close()
+		objCloser = nil
+	}
+	if sr != nil {
+		_ = sr.Close()
+		sr = nil
+	}
+	if closer != nil {
+		_ = closer.Close()
+		closer = nil
+	}
+
 	streamMu.Lock()
 	defer streamMu.Unlock()
 	return stream.Send(&pb.UpdateResponse{
@@ -573,7 +677,11 @@ func (s *GocflService) Create(req *pb.CreateRequest, stream pb.GocflService_Crea
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to create subfs for storage root '%s': %v", srPath, err)
 	}
-	defer func() { _ = closer.Close() }()
+	defer func() {
+		if closer != nil {
+			_ = closer.Close()
+		}
+	}()
 
 	srExtFS := s.defaultStorageRootExtensionFS
 	if req.GetDefaultStoragerootExtensions() != "" {
@@ -584,7 +692,11 @@ func (s *GocflService) Create(req *pb.CreateRequest, stream pb.GocflService_Crea
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to initialize storage root: %v", err)
 	}
-	defer func() { _ = sr.Close() }()
+	defer func() {
+		if sr != nil {
+			_ = sr.Close()
+		}
+	}()
 
 	objFolder, err := sr.IdToFolder(req.GetObjectId())
 	if err != nil {
@@ -595,7 +707,11 @@ func (s *GocflService) Create(req *pb.CreateRequest, stream pb.GocflService_Crea
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to create subfs for object folder '%s': %v", objFolder, err)
 	}
-	defer func() { _ = objCloser.Close() }()
+	defer func() {
+		if objCloser != nil {
+			_ = objCloser.Close()
+		}
+	}()
 
 	objExtFS := s.defaultObjectExtensionFS
 	if req.GetDefaultObjectExtensions() != "" {
@@ -606,7 +722,11 @@ func (s *GocflService) Create(req *pb.CreateRequest, stream pb.GocflService_Crea
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to initialize object '%s': %v", req.GetObjectId(), err)
 	}
-	defer func() { _ = obj.Close() }()
+	defer func() {
+		if obj != nil {
+			_ = obj.Close()
+		}
+	}()
 
 	userName := ""
 	userAddress := ""
@@ -660,6 +780,11 @@ func (s *GocflService) Create(req *pb.CreateRequest, stream pb.GocflService_Crea
 	if obj.GetInventory() != nil && obj.GetInventory().GetHead() != nil {
 		versionStr = obj.GetInventory().GetHead().String()
 	}
+
+	if err := obj.Close(); err != nil {
+		return status.Errorf(codes.Internal, "failed to close object: %v", err)
+	}
+	obj = nil
 
 	streamMu.Lock()
 	defer streamMu.Unlock()

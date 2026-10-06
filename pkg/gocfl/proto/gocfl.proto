@@ -184,6 +184,254 @@ message ValidateResponse {
   }
 }
 
+// DigestPaths associates a digest with a list of file paths.
+message DigestPaths {
+  repeated string paths = 1;
+}
+
+// Version represents a single OCFL version entry within an inventory.
+message Version {
+  string created = 1;
+  string message = 2;
+  User user = 3;
+  map<string, DigestPaths> state = 4;
+}
+
+// FixityMap stores fixity digest mappings for a given algorithm.
+message FixityMap {
+  map<string, DigestPaths> digests = 1;
+}
+
+// Inventory represents the complete snapshot of an OCFL inventory.json.
+message Inventory {
+  string id = 1;
+  string head = 2;
+  string type = 3;
+  string digest_algorithm = 4;
+  string content_directory = 5;
+  map<string, DigestPaths> manifest = 6;
+  map<string, Version> versions = 7;
+  map<string, FixityMap> fixity = 8;
+}
+
+// StorageRootHandle represents a reference to an open storage root on the server.
+message StorageRootHandle {
+  string id = 1;
+  int64 expires_at_unix = 2;
+}
+
+// ObjectHandle represents a reference to an open OCFL object on the server.
+message ObjectHandle {
+  string id = 1;
+  int64 expires_at_unix = 2;
+}
+
+// UpdaterHandle represents a reference to an active updater/version-writer on the server.
+message UpdaterHandle {
+  string id = 1;
+  int64 expires_at_unix = 2;
+}
+
+// CloseHandleRequest represents a request to close and release a handle.
+message CloseHandleRequest {
+  string handle_id = 1;
+}
+
+// CloseHandleResponse indicates whether the handle was closed.
+message CloseHandleResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// KeepAliveRequest extends the TTL of an active handle.
+message KeepAliveRequest {
+  string handle_id = 1;
+  int64 extend_seconds = 2;
+}
+
+// KeepAliveResponse contains the renewed expiration timestamp.
+message KeepAliveResponse {
+  bool success = 1;
+  int64 expires_at_unix = 2;
+}
+
+// OpenStorageRootRequest opens an existing storage root and returns a handle.
+message OpenStorageRootRequest {
+  string ocfl_path = 1;
+  map<string, string> extension_params = 2;
+}
+
+// InitStorageRootHandleRequest initializes a storage root and returns a handle to it.
+message InitStorageRootHandleRequest {
+  string ocfl_path = 1;
+  string default_storageroot_extensions = 2;
+  string ocfl_version = 3;
+  string digest = 4;
+  map<string, string> extension_params = 5;
+}
+
+// ListObjectsRequest lists objects in an open storage root.
+message ListObjectsRequest {
+  string storageroot_handle_id = 1;
+}
+
+// ObjectSummary provides summary information about an object folder.
+message ObjectSummary {
+  string object_id = 1;
+  string folder = 2;
+}
+
+// ListObjectsResponse contains the list of objects found in the storage root.
+message ListObjectsResponse {
+  repeated ObjectSummary objects = 1;
+  repeated string object_folders = 2;
+}
+
+// GetStorageRootDetailsRequest retrieves metadata about the storage root.
+message GetStorageRootDetailsRequest {
+  string storageroot_handle_id = 1;
+}
+
+// StorageRootDetailsResponse contains storage root properties.
+message StorageRootDetailsResponse {
+  string ocfl_version = 1;
+  string digest_algorithm = 2;
+  repeated string object_folders = 3;
+}
+
+// OpenObjectRequest opens an existing object in a storage root or at a direct path.
+message OpenObjectRequest {
+  string storageroot_handle_id = 1;
+  string object_id = 2;
+  string object_path = 3;
+  map<string, string> extension_params = 4;
+}
+
+// InitObjectHandleRequest initializes an object and returns an open ObjectHandle.
+message InitObjectHandleRequest {
+  string storageroot_handle_id = 1;
+  string object_id = 2;
+  string object_path = 3;
+  string default_object_extensions = 4;
+  string ocfl_version = 5;
+  string digest = 6;
+  map<string, string> extension_params = 7;
+}
+
+// GetInventoryRequest retrieves the inventory of an open object.
+message GetInventoryRequest {
+  string object_handle_id = 1;
+}
+
+// InventoryResponse delivers the inventory snapshot.
+message InventoryResponse {
+  Inventory inventory = 1;
+}
+
+// ValidateObjectHandleRequest validates an open object.
+message ValidateObjectHandleRequest {
+  string object_handle_id = 1;
+}
+
+// ValidateObjectHandleResponse returns validation results for an open object.
+message ValidateObjectHandleResponse {
+  bool is_valid = 1;
+  string message = 2;
+  repeated ValidationError errors = 3;
+  repeated string warnings = 4;
+}
+
+// BeginUpdateRequest starts a new version update on an open object.
+message BeginUpdateRequest {
+  string object_handle_id = 1;
+  string message = 2;
+  User user = 3;
+  bool echo = 4;
+}
+
+// AddFileRequest adds a file from VFS path or content payload to an active updater.
+message AddFileRequest {
+  string updater_handle_id = 1;
+  string path = 2;
+  bytes content = 3;
+  string area = 4;
+  bool deduplicate = 5;
+  string src_path = 6;
+  string dest_path = 7;
+}
+
+// AddFileResponse returns the digest and success status of the added file.
+message AddFileResponse {
+  bool success = 1;
+  string message = 2;
+  string digest = 3;
+}
+
+// AddFolderRequest adds files from a VFS path to an active updater.
+message AddFolderRequest {
+  string updater_handle_id = 1;
+  string src_path = 2;
+  string area = 3;
+  bool deduplicate = 4;
+}
+
+// AddFolderResponse returns the status of adding the folder.
+message AddFolderResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// DeleteFileRequest marks a file for deletion in the current version.
+message DeleteFileRequest {
+  string updater_handle_id = 1;
+  string path = 2;
+  string digest = 3;
+}
+
+// DeleteFileResponse returns the status of deleting the file.
+message DeleteFileResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// RenameFileRequest renames a file within the current version.
+message RenameFileRequest {
+  string updater_handle_id = 1;
+  string source_path = 2;
+  string dest_path = 3;
+  string digest = 4;
+}
+
+// RenameFileResponse returns the status of renaming the file.
+message RenameFileResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// CommitUpdateRequest commits the active update, writing the new version and inventory.
+message CommitUpdateRequest {
+  string updater_handle_id = 1;
+}
+
+// CommitUpdateResponse returns the result of the commit and the updated inventory.
+message CommitUpdateResponse {
+  bool success = 1;
+  string message = 2;
+  string head_version = 3;
+  Inventory new_inventory = 4;
+}
+
+// RollbackUpdateRequest aborts the active update and releases staging resources.
+message RollbackUpdateRequest {
+  string updater_handle_id = 1;
+}
+
+// RollbackUpdateResponse indicates the outcome of the rollback.
+message RollbackUpdateResponse {
+  bool success = 1;
+  string message = 2;
+}
+
 // ShutdownRequest represents parameters for shutting down the gRPC server.
 message ShutdownRequest {
   string reason = 1;
@@ -198,6 +446,7 @@ message ShutdownResponse {
 
 // GocflService provides gRPC operations for managing OCFL storage roots and objects.
 service GocflService {
+  // ─── Macro Operations (High-level 1-call RPCs) ───────────────────────
   // Init initializes an empty OCFL storage root.
   rpc Init(InitRequest) returns (stream InitResponse);
 
@@ -215,4 +464,56 @@ service GocflService {
 
   // Shutdown initiates a graceful or immediate shutdown of the gRPC server.
   rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
+
+  // ─── Fine-Grained Handle Operations ──────────────────────────────────
+  // CloseHandle closes and releases an open StorageRoot, Object, or Updater handle.
+  rpc CloseHandle(CloseHandleRequest) returns (CloseHandleResponse);
+
+  // KeepAlive renews the lease/TTL of an open handle.
+  rpc KeepAlive(KeepAliveRequest) returns (KeepAliveResponse);
+
+  // OpenStorageRoot opens an existing OCFL storage root and returns a handle.
+  rpc OpenStorageRoot(OpenStorageRootRequest) returns (StorageRootHandle);
+
+  // InitStorageRootHandle initializes a storage root and returns an open handle.
+  rpc InitStorageRootHandle(InitStorageRootHandleRequest) returns (StorageRootHandle);
+
+  // ListObjects lists object folders within an open storage root.
+  rpc ListObjects(ListObjectsRequest) returns (ListObjectsResponse);
+
+  // GetStorageRootDetails retrieves version and layout details of an open storage root.
+  rpc GetStorageRootDetails(GetStorageRootDetailsRequest) returns (StorageRootDetailsResponse);
+
+  // OpenObject opens an existing OCFL object within a storage root or direct path.
+  rpc OpenObject(OpenObjectRequest) returns (ObjectHandle);
+
+  // InitObjectHandle initializes a new OCFL object and returns an open handle.
+  rpc InitObjectHandle(InitObjectHandleRequest) returns (ObjectHandle);
+
+  // GetInventory retrieves the full Inventory snapshot as a Protobuf message.
+  rpc GetInventory(GetInventoryRequest) returns (InventoryResponse);
+
+  // ValidateObjectHandle validates an open OCFL object.
+  rpc ValidateObjectHandle(ValidateObjectHandleRequest) returns (ValidateObjectHandleResponse);
+
+  // BeginUpdate starts a new version update session on an open object.
+  rpc BeginUpdate(BeginUpdateRequest) returns (UpdaterHandle);
+
+  // AddFile adds a file with direct content bytes into the active version.
+  rpc AddFile(AddFileRequest) returns (AddFileResponse);
+
+  // AddFolder adds all files from a VFS path into the active version.
+  rpc AddFolder(AddFolderRequest) returns (AddFolderResponse);
+
+  // DeleteFile removes a file from the active version state.
+  rpc DeleteFile(DeleteFileRequest) returns (DeleteFileResponse);
+
+  // RenameFile renames a file within the active version state.
+  rpc RenameFile(RenameFileRequest) returns (RenameFileResponse);
+
+  // CommitUpdate commits the version update and updates the object's inventory.
+  rpc CommitUpdate(CommitUpdateRequest) returns (CommitUpdateResponse);
+
+  // RollbackUpdate cancels the version update and discards uncommitted changes.
+  rpc RollbackUpdate(RollbackUpdateRequest) returns (RollbackUpdateResponse);
 }

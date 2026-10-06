@@ -137,7 +137,137 @@ func TestClientWithBufconn(t *testing.T) {
 	assert.Equal(t, "urn:test:client:created", createResp.GetObjectId())
 	assert.Equal(t, "v1", createResp.GetVersion())
 
-	// 6. Shutdown
+	// 6. Test Handle-Based Hybrid Operations
+	// 6a. Init StorageRoot Handle
+	handleRoot := filepath.ToSlash(filepath.Join(tempDir, "ocfl_handle_root"))
+	srHandle, err := cl.InitStorageRootHandle(ctx, &pb.InitStorageRootHandleRequest{
+		OcflPath:    handleRoot,
+		OcflVersion: "1.1",
+		Digest:      "sha512",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, srHandle.GetId())
+
+	// 6b. Get StorageRoot Details & List Objects
+	srDetails, err := cl.GetStorageRootDetails(ctx, &pb.GetStorageRootDetailsRequest{
+		StoragerootHandleId: srHandle.GetId(),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "1.1", srDetails.GetOcflVersion())
+	assert.Equal(t, "sha512", srDetails.GetDigestAlgorithm())
+
+	listResp, err := cl.ListObjects(ctx, &pb.ListObjectsRequest{
+		StoragerootHandleId: srHandle.GetId(),
+	})
+	require.NoError(t, err)
+	assert.Empty(t, listResp.GetObjectFolders())
+
+	// 6c. Init Object Handle
+	objHandle, err := cl.InitObjectHandle(ctx, &pb.InitObjectHandleRequest{
+		StoragerootHandleId: srHandle.GetId(),
+		ObjectId:            "urn:handle:obj1",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, objHandle.GetId())
+
+	// 6d. Begin Update & Add File directly via Handle
+	updHandle, err := cl.BeginUpdate(ctx, &pb.BeginUpdateRequest{
+		ObjectHandleId: objHandle.GetId(),
+		Message:        "first version via handle",
+		User: &pb.User{
+			Name:    "Handle Tester",
+			Address: "mailto:handle@example.com",
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, updHandle.GetId())
+
+	// 6d. Add File to Updater using direct VFS path (no bytes needed)
+	vfsSampleFile := filepath.ToSlash(filepath.Join(tempDir, "sample_vfs_file.txt"))
+	require.NoError(t, os.WriteFile(vfsSampleFile, []byte("direct vfs stream content"), 0644))
+
+	addFileResp, err := cl.AddFile(ctx, &pb.AddFileRequest{
+		UpdaterHandleId: updHandle.GetId(),
+		SrcPath:         vfsSampleFile,
+		DestPath:        "data/file1.txt",
+	})
+	require.NoError(t, err)
+	assert.True(t, addFileResp.GetSuccess())
+
+	// 6e. Commit Update
+	commitResp, err := cl.CommitUpdate(ctx, &pb.CommitUpdateRequest{
+		UpdaterHandleId: updHandle.GetId(),
+	})
+	require.NoError(t, err)
+	assert.True(t, commitResp.GetSuccess())
+	assert.Equal(t, "v1", commitResp.GetHeadVersion())
+	require.NotNil(t, commitResp.GetNewInventory())
+	assert.Equal(t, "urn:handle:obj1", commitResp.GetNewInventory().GetId())
+	assert.Equal(t, "v1", commitResp.GetNewInventory().GetHead())
+
+	// 6f. Get Inventory Snapshot
+	invResp, err := cl.GetInventory(ctx, &pb.GetInventoryRequest{
+		ObjectHandleId: objHandle.GetId(),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, invResp.GetInventory())
+	assert.Equal(t, "urn:handle:obj1", invResp.GetInventory().GetId())
+	assert.Equal(t, "v1", invResp.GetInventory().GetHead())
+	assert.NotEmpty(t, invResp.GetInventory().GetManifest())
+	assert.NotEmpty(t, invResp.GetInventory().GetVersions())
+
+	// 6g. Validate Object via Handle
+	valObjResp, err := cl.ValidateObjectHandle(ctx, &pb.ValidateObjectHandleRequest{
+		ObjectHandleId: objHandle.GetId(),
+	})
+	require.NoError(t, err)
+	assert.True(t, valObjResp.GetIsValid())
+
+	// 6h. Incremental Update: Add v2 via Handle
+	updHandle2, err := cl.BeginUpdate(ctx, &pb.BeginUpdateRequest{
+		ObjectHandleId: objHandle.GetId(),
+		Message:        "second version via handle",
+	})
+	require.NoError(t, err)
+
+	addFileResp2, err := cl.AddFile(ctx, &pb.AddFileRequest{
+		UpdaterHandleId: updHandle2.GetId(),
+		Path:            "data/file2.txt",
+		Content:         []byte("second file content"),
+	})
+	require.NoError(t, err)
+	assert.True(t, addFileResp2.GetSuccess())
+
+	commitResp2, err := cl.CommitUpdate(ctx, &pb.CommitUpdateRequest{
+		UpdaterHandleId: updHandle2.GetId(),
+	})
+	require.NoError(t, err)
+	assert.True(t, commitResp2.GetSuccess())
+	assert.Equal(t, "v2", commitResp2.GetHeadVersion())
+	require.NotNil(t, commitResp2.GetNewInventory())
+	assert.Equal(t, "v2", commitResp2.GetNewInventory().GetHead())
+
+	// 6i. KeepAlive and Close Handles
+	keepResp, err := cl.KeepAlive(ctx, &pb.KeepAliveRequest{
+		HandleId:      srHandle.GetId(),
+		ExtendSeconds: 600,
+	})
+	require.NoError(t, err)
+	assert.True(t, keepResp.GetSuccess())
+
+	closeObjResp, err := cl.CloseHandle(ctx, &pb.CloseHandleRequest{
+		HandleId: objHandle.GetId(),
+	})
+	require.NoError(t, err)
+	assert.True(t, closeObjResp.GetSuccess())
+
+	closeSrResp, err := cl.CloseHandle(ctx, &pb.CloseHandleRequest{
+		HandleId: srHandle.GetId(),
+	})
+	require.NoError(t, err)
+	assert.True(t, closeSrResp.GetSuccess())
+
+	// 7. Shutdown
 	shutResp, err := cl.Shutdown(ctx, &pb.ShutdownRequest{
 		Reason: "client test shutdown",
 		Force:  false,

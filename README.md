@@ -243,35 +243,26 @@ message LogEntry {
 
 ### Methods Summary
 
-#### `Init`
-Initializes a new OCFL storage root at `ocfl_path`.
-- **Request (`InitRequest`)**: `ocfl_path`, `ocfl_version` (e.g. `"1.1"`), `digest` (e.g. `"sha512"`), `default_storageroot_extensions`, `extension_params`.
-- **Response (`InitResponse`)**: Streams `LogEntry` messages followed by `InitResult` (`success`, `message`).
+#### Macro Operations (1-Call Actions)
+- `Init`: Initializes a new OCFL storage root with live log streaming.
+- `Add`: Ingests an initial object version (`v1`) into an existing storage root.
+- `Update`: Creates a subsequent version for an existing object with deduplication and area support.
+- `Create`: Initializes a storage root and adds an initial object in one operation.
+- `Validate`: Conformance validation of storage roots or objects according to OCFL specs.
+- `Shutdown`: Remote graceful or immediate shutdown of the gRPC server process.
 
-#### `Add`
-Ingests an initial object version (`v1`) into an existing storage root.
-- **Request (`AddRequest`)**: `ocfl_path`, `object_id`, `src_path`, `message`, `user`, `digest`, `deduplicate`, `default_area`, `area_paths`, `default_object_extensions`, `extension_params`.
-- **Response (`AddResponse`)**: Streams `LogEntry` messages followed by `AddResult` (`success`, `message`, `object_id`, `version`).
-
-#### `Update`
-Creates a subsequent version for an existing object in a storage root.
-- **Request (`UpdateRequest`)**: `ocfl_path`, `object_id`, `src_path`, `message`, `user`, `echo`, `deduplicate`, `area_paths`, `extension_params`.
-- **Response (`UpdateResponse`)**: Streams `LogEntry` messages followed by `UpdateResult` (`success`, `message`, `object_id`, `version`).
-
-#### `Create`
-Initializes a storage root and adds an initial object in one operation.
-- **Request (`CreateRequest`)**: Combines parameters from `InitRequest` and `AddRequest`.
-- **Response (`CreateResponse`)**: Streams `LogEntry` messages followed by `CreateResult` (`success`, `message`, `object_id`, `version`).
-
-#### `Validate`
-Validates an entire storage root or a specific object path / object ID against the OCFL specifications.
-- **Request (`ValidateRequest`)**: `ocfl_path`, `object_id`, `object_path`, `extension_params`.
-- **Response (`ValidateResponse`)**: Streams `LogEntry` messages followed by `ValidateResult` (`is_valid`, `message`, `errors` list of `ValidationError`, `warnings`).
-
-#### `Shutdown`
-Initiates a graceful or immediate remote shutdown of the gRPC server process.
-- **Request (`ShutdownRequest`)**: `reason`, `force` (bool).
-- **Response (`ShutdownResponse`)**: `success`, `message`.
+#### Fine-Grained Handle Operations
+- `OpenStorageRoot` / `InitStorageRootHandle`: Opens/Initializes a storage root and returns an opaque `StorageRootHandle`.
+- `ListObjects` / `GetStorageRootDetails`: Queries object folders and storage root layout configuration.
+- `OpenObject` / `InitObjectHandle`: Opens/Initializes an OCFL object within a storage root or direct path and returns an `ObjectHandle`.
+- `GetInventory`: Retrieves the full immutable `Inventory` protobuf snapshot (`manifest`, `versions`, `state`, `fixity`, `head`, `spec`).
+- `ValidateObjectHandle`: Validates an open object handle without re-opening filesystems.
+- `BeginUpdate`: Starts a new staging version update session returning an `UpdaterHandle`.
+- `AddFile` / `AddFolder`: Adds files (direct byte payload or VFS path) to the active version.
+- `RenameFile` / `DeleteFile`: Modifies the logical file state of the active version.
+- `CommitUpdate`: Atomically writes the new version and updates the object inventory.
+- `RollbackUpdate`: Cancels the staging update and cleans up resources.
+- `KeepAlive` / `CloseHandle`: Leases management, TTL renewal, and resource release.
 
 ---
 

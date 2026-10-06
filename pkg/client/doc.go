@@ -3,9 +3,10 @@
 // The client supports connecting to a gocfl gRPC server over plain TCP or TLS (including
 // dynamic TLS certificate management via certloader). It provides convenient wrapper methods
 // for all OCFL operations (Init, Add, Update, Create, Validate, and Shutdown) with optional live log streaming
-// callbacks, as well as direct access to the underlying gRPC client streams and connection.
+// callbacks, as well as fine-grained handle operations (OpenStorageRoot, OpenObject, GetInventory, BeginUpdate,
+// AddFile, AddFolder, CommitUpdate, KeepAlive, CloseHandle).
 //
-// # Quickstart
+// # Quickstart (Macro Actions)
 //
 //	cl, err := client.NewClient("localhost:50051", client.WithInsecure())
 //	if err != nil {
@@ -22,16 +23,14 @@
 //	    fmt.Printf("[%s] %s\n", log.Level, log.Message)
 //	}))
 //
-//	// Add a new object
-//	addResp, err := cl.Add(ctx, &pb.AddRequest{
-//	    OcflPath: "/path/to/storage_root",
-//	    ObjectId: "urn:uuid:f47ac10b-58cc-4372-a567-0e02b2c3d479",
-//	    SrcPath:  "/path/to/source_folder",
-//	    Message:  "Initial object version",
-//	})
+// # Quickstart (Fine-Grained Handle API)
 //
-//	// Validate the storage root or object
-//	valResp, err := cl.Validate(ctx, &pb.ValidateRequest{
-//	    OcflPath: "/path/to/storage_root",
-//	})
+//	srHandle, _ := cl.OpenStorageRoot(ctx, &pb.OpenStorageRootRequest{OcflPath: "/path/to/storage_root"})
+//	defer cl.CloseHandle(ctx, &pb.CloseHandleRequest{HandleId: srHandle.Id})
+//
+//	objHandle, _ := cl.OpenObject(ctx, &pb.OpenObjectRequest{StoragerootHandleId: srHandle.Id, ObjectId: "urn:obj:1"})
+//	defer cl.CloseHandle(ctx, &pb.CloseHandleRequest{HandleId: objHandle.Id})
+//
+//	invResp, _ := cl.GetInventory(ctx, &pb.GetInventoryRequest{ObjectHandleId: objHandle.Id})
+//	fmt.Println("Head Version:", invResp.Inventory.Head)
 package client
