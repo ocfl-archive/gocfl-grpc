@@ -6,10 +6,12 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
 	"github.com/je4/utils/v2/pkg/zLogger"
 	"github.com/ocfl-archive/filesystem/pkg/vfsrw"
+	"github.com/ocfl-archive/gocfl-grpc/pkg/client"
 	pb "github.com/ocfl-archive/gocfl-grpc/pkg/gocfl/proto"
 	"github.com/ocfl-archive/gocfl-grpc/pkg/gocfl/service"
 	"github.com/rs/zerolog"
@@ -18,7 +20,7 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 )
 
-func setupTestGRPCServer(t *testing.T) (pb.GocflServiceClient, func()) {
+func setupTestGRPCServer(t *testing.T) (client.GocflClient, func()) {
 	out := zerolog.Nop()
 	logger := zLogger.ZLogger(&out)
 
@@ -62,18 +64,18 @@ func setupTestGRPCServer(t *testing.T) (pb.GocflServiceClient, func()) {
 		t.Fatalf("Failed to dial bufnet: %v", err)
 	}
 
-	client := pb.NewGocflServiceClient(conn)
+	cl := client.NewClientFromConn(conn, logger)
 
 	cleanup := func() {
-		_ = conn.Close()
+		_ = cl.Close()
 		server.Stop()
 	}
 
-	return client, cleanup
+	return cl, cleanup
 }
 
 func TestGocflServiceLifecycle(t *testing.T) {
-	client, cleanup := setupTestGRPCServer(t)
+	cl, cleanup := setupTestGRPCServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -100,13 +102,18 @@ func TestGocflServiceLifecycle(t *testing.T) {
 		t.Fatalf("Failed to write new_file.txt in src_v2: %v", err)
 	}
 
+	var logCount int64
+	logHandler := func(entry *pb.LogEntry) {
+		atomic.AddInt64(&logCount, 1)
+	}
+
 	// 1. Test Init
 	t.Run("Init", func(t *testing.T) {
-		initResp, err := client.Init(ctx, &pb.InitRequest{
+		initResp, err := cl.Init(ctx, &pb.InitRequest{
 			OcflPath:    storageRootPath,
 			OcflVersion: "1.1",
 			Digest:      "sha512",
-		})
+		}, client.WithCallLogHandler(logHandler))
 		if err != nil {
 			t.Fatalf("Init failed: %v", err)
 		}
@@ -118,7 +125,7 @@ func TestGocflServiceLifecycle(t *testing.T) {
 	// 2. Test Add
 	objectID := "test_object_1"
 	t.Run("Add", func(t *testing.T) {
-		addResp, err := client.Add(ctx, &pb.AddRequest{
+		addResp, err := cl.Add(ctx, &pb.AddRequest{
 			OcflPath: storageRootPath,
 			SrcPath:  srcDirV1,
 			ObjectId: objectID,
@@ -127,7 +134,7 @@ func TestGocflServiceLifecycle(t *testing.T) {
 				Name:    "Alice",
 				Address: "mailto:alice@example.org",
 			},
-		})
+		}, client.WithCallLogHandler(logHandler))
 		if err != nil {
 			t.Fatalf("Add failed: %v", err)
 		}
@@ -144,7 +151,7 @@ func TestGocflServiceLifecycle(t *testing.T) {
 
 	// 3. Test Add duplicate (should fail)
 	t.Run("Add Duplicate", func(t *testing.T) {
-		_, err := client.Add(ctx, &pb.AddRequest{
+		_, err := cl.Add(ctx, &pb.AddRequest{
 			OcflPath: storageRootPath,
 			SrcPath:  srcDirV1,
 			ObjectId: objectID,
@@ -156,7 +163,7 @@ func TestGocflServiceLifecycle(t *testing.T) {
 
 	// 4. Test Update
 	t.Run("Update", func(t *testing.T) {
-		updResp, err := client.Update(ctx, &pb.UpdateRequest{
+		updResp, err := cl.Update(ctx, &pb.UpdateRequest{
 			OcflPath: storageRootPath,
 			SrcPath:  srcDirV2,
 			ObjectId: objectID,
@@ -165,7 +172,7 @@ func TestGocflServiceLifecycle(t *testing.T) {
 				Name:    "Alice",
 				Address: "mailto:alice@example.org",
 			},
-		})
+		}, client.WithCallLogHandler(logHandler))
 		if err != nil {
 			t.Fatalf("Update failed: %v", err)
 		}
@@ -179,10 +186,10 @@ func TestGocflServiceLifecycle(t *testing.T) {
 
 	// 5. Test Validate Object
 	t.Run("Validate Object", func(t *testing.T) {
-		valResp, err := client.Validate(ctx, &pb.ValidateRequest{
+		valResp, err := cl.Validate(ctx, &pb.ValidateRequest{
 			OcflPath: storageRootPath,
 			ObjectId: objectID,
-		})
+		}, client.WithCallLogHandler(logHandler))
 		if err != nil {
 			t.Fatalf("Validate failed: %v", err)
 		}
@@ -193,9 +200,9 @@ func TestGocflServiceLifecycle(t *testing.T) {
 
 	// 6. Test Validate Storage Root
 	t.Run("Validate Storage Root", func(t *testing.T) {
-		valResp, err := client.Validate(ctx, &pb.ValidateRequest{
+		valResp, err := cl.Validate(ctx, &pb.ValidateRequest{
 			OcflPath: storageRootPath,
-		})
+		}, client.WithCallLogHandler(logHandler))
 		if err != nil {
 			t.Fatalf("Validate storage root failed: %v", err)
 		}
@@ -208,7 +215,7 @@ func TestGocflServiceLifecycle(t *testing.T) {
 	t.Run("Create", func(t *testing.T) {
 		storageRootPath2 := filepath.Join(tempDir, "ocfl_root_create")
 		createObjectID := "test_object_create"
-		createResp, err := client.Create(ctx, &pb.CreateRequest{
+		createResp, err := cl.Create(ctx, &pb.CreateRequest{
 			OcflPath:    storageRootPath2,
 			SrcPath:     srcDirV1,
 			ObjectId:    createObjectID,
@@ -218,7 +225,7 @@ func TestGocflServiceLifecycle(t *testing.T) {
 				Name:    "Bob",
 				Address: "mailto:bob@example.org",
 			},
-		})
+		}, client.WithCallLogHandler(logHandler))
 		if err != nil {
 			t.Fatalf("Create failed: %v", err)
 		}
@@ -230,7 +237,7 @@ func TestGocflServiceLifecycle(t *testing.T) {
 		}
 
 		// Validate created object
-		valResp, err := client.Validate(ctx, &pb.ValidateRequest{
+		valResp, err := cl.Validate(ctx, &pb.ValidateRequest{
 			OcflPath: storageRootPath2,
 			ObjectId: createObjectID,
 		})

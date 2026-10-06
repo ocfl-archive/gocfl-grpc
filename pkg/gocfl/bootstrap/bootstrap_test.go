@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ocfl-archive/gocfl-grpc/pkg/client"
 	pb "github.com/ocfl-archive/gocfl-grpc/pkg/gocfl/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -46,13 +47,13 @@ func TestBootstrapServer(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = conn.Close() }()
 
-	client := pb.NewGocflServiceClient(conn)
+	cl := client.NewClientFromConn(conn, nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	// Test Init via bootstrapped server
 	ocflRoot := filepath.ToSlash(filepath.Join(tempDir, "ocfl_storage"))
-	initResp, err := client.Init(ctx, &pb.InitRequest{
+	initResp, err := cl.Init(ctx, &pb.InitRequest{
 		OcflPath:    ocflRoot,
 		OcflVersion: "1.1",
 		Digest:      "sha512",
@@ -66,7 +67,7 @@ func TestBootstrapServer(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(srcDir, "test.txt"), []byte("hello bootstrap ocfl"), 0644))
 
 	// Test Add
-	addResp, err := client.Add(ctx, &pb.AddRequest{
+	addResp, err := cl.Add(ctx, &pb.AddRequest{
 		OcflPath: ocflRoot,
 		ObjectId: "object:1",
 		SrcPath:  filepath.ToSlash(srcDir),
@@ -82,7 +83,7 @@ func TestBootstrapServer(t *testing.T) {
 	assert.Equal(t, "v1", addResp.GetVersion())
 
 	// Test Validate
-	valResp, err := client.Validate(ctx, &pb.ValidateRequest{
+	valResp, err := cl.Validate(ctx, &pb.ValidateRequest{
 		OcflPath: ocflRoot,
 		ObjectId: "object:1",
 	})

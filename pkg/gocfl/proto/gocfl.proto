@@ -20,6 +20,14 @@ message AESConfig {
   string keepass_key = 6;
 }
 
+// LogEntry represents a real-time log event emitted during operation execution.
+message LogEntry {
+  int64 timestamp = 1;
+  string level = 2;
+  string message = 3;
+  string json_raw = 4;
+}
+
 // InitRequest represents parameters for initializing an OCFL storage root.
 message InitRequest {
   string ocfl_path = 1;
@@ -30,10 +38,18 @@ message InitRequest {
   map<string, string> extension_params = 6;
 }
 
-// InitResponse represents the result of the init operation.
-message InitResponse {
+// InitResult represents the final outcome of the init operation.
+message InitResult {
   bool success = 1;
   string message = 2;
+}
+
+// InitResponse represents a stream message carrying either a log entry or the final result.
+message InitResponse {
+  oneof payload {
+    LogEntry log = 1;
+    InitResult result = 2;
+  }
 }
 
 // AddRequest represents parameters for adding a new object to an existing OCFL storage root.
@@ -53,12 +69,20 @@ message AddRequest {
   map<string, string> extension_params = 13;
 }
 
-// AddResponse represents the result of the add operation.
-message AddResponse {
+// AddResult represents the final outcome of the add operation.
+message AddResult {
   bool success = 1;
   string message = 2;
   string object_id = 3;
   string version = 4;
+}
+
+// AddResponse represents a stream message carrying either a log entry or the final result.
+message AddResponse {
+  oneof payload {
+    LogEntry log = 1;
+    AddResult result = 2;
+  }
 }
 
 // UpdateRequest represents parameters for updating an existing OCFL object.
@@ -77,12 +101,20 @@ message UpdateRequest {
   map<string, string> extension_params = 12;
 }
 
-// UpdateResponse represents the result of the update operation.
-message UpdateResponse {
+// UpdateResult represents the final outcome of the update operation.
+message UpdateResult {
   bool success = 1;
   string message = 2;
   string object_id = 3;
   string version = 4;
+}
+
+// UpdateResponse represents a stream message carrying either a log entry or the final result.
+message UpdateResponse {
+  oneof payload {
+    LogEntry log = 1;
+    UpdateResult result = 2;
+  }
 }
 
 // CreateRequest represents parameters for creating a storage root and adding an initial object.
@@ -105,12 +137,20 @@ message CreateRequest {
   map<string, string> extension_params = 16;
 }
 
-// CreateResponse represents the result of the create operation.
-message CreateResponse {
+// CreateResult represents the final outcome of the create operation.
+message CreateResult {
   bool success = 1;
   string message = 2;
   string object_id = 3;
   string version = 4;
+}
+
+// CreateResponse represents a stream message carrying either a log entry or the final result.
+message CreateResponse {
+  oneof payload {
+    LogEntry log = 1;
+    CreateResult result = 2;
+  }
 }
 
 // ValidateRequest represents parameters for validating an OCFL storage root or specific object.
@@ -128,28 +168,36 @@ message ValidationError {
   string path = 3;
 }
 
-// ValidateResponse represents the result of the validation.
-message ValidateResponse {
+// ValidateResult represents the final outcome of the validation.
+message ValidateResult {
   bool is_valid = 1;
   string message = 2;
   repeated ValidationError errors = 3;
   repeated string warnings = 4;
 }
 
+// ValidateResponse represents a stream message carrying either a log entry or the final result.
+message ValidateResponse {
+  oneof payload {
+    LogEntry log = 1;
+    ValidateResult result = 2;
+  }
+}
+
 // GocflService provides gRPC operations for managing OCFL storage roots and objects.
 service GocflService {
   // Init initializes an empty OCFL storage root.
-  rpc Init(InitRequest) returns (InitResponse);
+  rpc Init(InitRequest) returns (stream InitResponse);
 
   // Add adds a new object into an existing OCFL structure.
-  rpc Add(AddRequest) returns (AddResponse);
+  rpc Add(AddRequest) returns (stream AddResponse);
 
   // Update adds a new version to an existing object in an OCFL structure.
-  rpc Update(UpdateRequest) returns (UpdateResponse);
+  rpc Update(UpdateRequest) returns (stream UpdateResponse);
 
   // Create initializes an OCFL structure and adds an initial object.
-  rpc Create(CreateRequest) returns (CreateResponse);
+  rpc Create(CreateRequest) returns (stream CreateResponse);
 
   // Validate validates an OCFL storage root or a specific object.
-  rpc Validate(ValidateRequest) returns (ValidateResponse);
+  rpc Validate(ValidateRequest) returns (stream ValidateResponse);
 }

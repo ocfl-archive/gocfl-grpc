@@ -31,15 +31,15 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type GocflServiceClient interface {
 	// Init initializes an empty OCFL storage root.
-	Init(ctx context.Context, in *InitRequest, opts ...grpc.CallOption) (*InitResponse, error)
+	Init(ctx context.Context, in *InitRequest, opts ...grpc.CallOption) (GocflService_InitClient, error)
 	// Add adds a new object into an existing OCFL structure.
-	Add(ctx context.Context, in *AddRequest, opts ...grpc.CallOption) (*AddResponse, error)
+	Add(ctx context.Context, in *AddRequest, opts ...grpc.CallOption) (GocflService_AddClient, error)
 	// Update adds a new version to an existing object in an OCFL structure.
-	Update(ctx context.Context, in *UpdateRequest, opts ...grpc.CallOption) (*UpdateResponse, error)
+	Update(ctx context.Context, in *UpdateRequest, opts ...grpc.CallOption) (GocflService_UpdateClient, error)
 	// Create initializes an OCFL structure and adds an initial object.
-	Create(ctx context.Context, in *CreateRequest, opts ...grpc.CallOption) (*CreateResponse, error)
+	Create(ctx context.Context, in *CreateRequest, opts ...grpc.CallOption) (GocflService_CreateClient, error)
 	// Validate validates an OCFL storage root or a specific object.
-	Validate(ctx context.Context, in *ValidateRequest, opts ...grpc.CallOption) (*ValidateResponse, error)
+	Validate(ctx context.Context, in *ValidateRequest, opts ...grpc.CallOption) (GocflService_ValidateClient, error)
 }
 
 type gocflServiceClient struct {
@@ -50,49 +50,164 @@ func NewGocflServiceClient(cc grpc.ClientConnInterface) GocflServiceClient {
 	return &gocflServiceClient{cc}
 }
 
-func (c *gocflServiceClient) Init(ctx context.Context, in *InitRequest, opts ...grpc.CallOption) (*InitResponse, error) {
-	out := new(InitResponse)
-	err := c.cc.Invoke(ctx, GocflService_Init_FullMethodName, in, out, opts...)
+func (c *gocflServiceClient) Init(ctx context.Context, in *InitRequest, opts ...grpc.CallOption) (GocflService_InitClient, error) {
+	stream, err := c.cc.NewStream(ctx, &GocflService_ServiceDesc.Streams[0], GocflService_Init_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &gocflServiceInitClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
 }
 
-func (c *gocflServiceClient) Add(ctx context.Context, in *AddRequest, opts ...grpc.CallOption) (*AddResponse, error) {
-	out := new(AddResponse)
-	err := c.cc.Invoke(ctx, GocflService_Add_FullMethodName, in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
+type GocflService_InitClient interface {
+	Recv() (*InitResponse, error)
+	grpc.ClientStream
 }
 
-func (c *gocflServiceClient) Update(ctx context.Context, in *UpdateRequest, opts ...grpc.CallOption) (*UpdateResponse, error) {
-	out := new(UpdateResponse)
-	err := c.cc.Invoke(ctx, GocflService_Update_FullMethodName, in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
+type gocflServiceInitClient struct {
+	grpc.ClientStream
 }
 
-func (c *gocflServiceClient) Create(ctx context.Context, in *CreateRequest, opts ...grpc.CallOption) (*CreateResponse, error) {
-	out := new(CreateResponse)
-	err := c.cc.Invoke(ctx, GocflService_Create_FullMethodName, in, out, opts...)
-	if err != nil {
+func (x *gocflServiceInitClient) Recv() (*InitResponse, error) {
+	m := new(InitResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
-	return out, nil
+	return m, nil
 }
 
-func (c *gocflServiceClient) Validate(ctx context.Context, in *ValidateRequest, opts ...grpc.CallOption) (*ValidateResponse, error) {
-	out := new(ValidateResponse)
-	err := c.cc.Invoke(ctx, GocflService_Validate_FullMethodName, in, out, opts...)
+func (c *gocflServiceClient) Add(ctx context.Context, in *AddRequest, opts ...grpc.CallOption) (GocflService_AddClient, error) {
+	stream, err := c.cc.NewStream(ctx, &GocflService_ServiceDesc.Streams[1], GocflService_Add_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &gocflServiceAddClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type GocflService_AddClient interface {
+	Recv() (*AddResponse, error)
+	grpc.ClientStream
+}
+
+type gocflServiceAddClient struct {
+	grpc.ClientStream
+}
+
+func (x *gocflServiceAddClient) Recv() (*AddResponse, error) {
+	m := new(AddResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *gocflServiceClient) Update(ctx context.Context, in *UpdateRequest, opts ...grpc.CallOption) (GocflService_UpdateClient, error) {
+	stream, err := c.cc.NewStream(ctx, &GocflService_ServiceDesc.Streams[2], GocflService_Update_FullMethodName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &gocflServiceUpdateClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type GocflService_UpdateClient interface {
+	Recv() (*UpdateResponse, error)
+	grpc.ClientStream
+}
+
+type gocflServiceUpdateClient struct {
+	grpc.ClientStream
+}
+
+func (x *gocflServiceUpdateClient) Recv() (*UpdateResponse, error) {
+	m := new(UpdateResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *gocflServiceClient) Create(ctx context.Context, in *CreateRequest, opts ...grpc.CallOption) (GocflService_CreateClient, error) {
+	stream, err := c.cc.NewStream(ctx, &GocflService_ServiceDesc.Streams[3], GocflService_Create_FullMethodName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &gocflServiceCreateClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type GocflService_CreateClient interface {
+	Recv() (*CreateResponse, error)
+	grpc.ClientStream
+}
+
+type gocflServiceCreateClient struct {
+	grpc.ClientStream
+}
+
+func (x *gocflServiceCreateClient) Recv() (*CreateResponse, error) {
+	m := new(CreateResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *gocflServiceClient) Validate(ctx context.Context, in *ValidateRequest, opts ...grpc.CallOption) (GocflService_ValidateClient, error) {
+	stream, err := c.cc.NewStream(ctx, &GocflService_ServiceDesc.Streams[4], GocflService_Validate_FullMethodName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &gocflServiceValidateClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type GocflService_ValidateClient interface {
+	Recv() (*ValidateResponse, error)
+	grpc.ClientStream
+}
+
+type gocflServiceValidateClient struct {
+	grpc.ClientStream
+}
+
+func (x *gocflServiceValidateClient) Recv() (*ValidateResponse, error) {
+	m := new(ValidateResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 // GocflServiceServer is the server API for GocflService service.
@@ -100,15 +215,15 @@ func (c *gocflServiceClient) Validate(ctx context.Context, in *ValidateRequest, 
 // for forward compatibility
 type GocflServiceServer interface {
 	// Init initializes an empty OCFL storage root.
-	Init(context.Context, *InitRequest) (*InitResponse, error)
+	Init(*InitRequest, GocflService_InitServer) error
 	// Add adds a new object into an existing OCFL structure.
-	Add(context.Context, *AddRequest) (*AddResponse, error)
+	Add(*AddRequest, GocflService_AddServer) error
 	// Update adds a new version to an existing object in an OCFL structure.
-	Update(context.Context, *UpdateRequest) (*UpdateResponse, error)
+	Update(*UpdateRequest, GocflService_UpdateServer) error
 	// Create initializes an OCFL structure and adds an initial object.
-	Create(context.Context, *CreateRequest) (*CreateResponse, error)
+	Create(*CreateRequest, GocflService_CreateServer) error
 	// Validate validates an OCFL storage root or a specific object.
-	Validate(context.Context, *ValidateRequest) (*ValidateResponse, error)
+	Validate(*ValidateRequest, GocflService_ValidateServer) error
 	mustEmbedUnimplementedGocflServiceServer()
 }
 
@@ -116,20 +231,20 @@ type GocflServiceServer interface {
 type UnimplementedGocflServiceServer struct {
 }
 
-func (UnimplementedGocflServiceServer) Init(context.Context, *InitRequest) (*InitResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Init not implemented")
+func (UnimplementedGocflServiceServer) Init(*InitRequest, GocflService_InitServer) error {
+	return status.Errorf(codes.Unimplemented, "method Init not implemented")
 }
-func (UnimplementedGocflServiceServer) Add(context.Context, *AddRequest) (*AddResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Add not implemented")
+func (UnimplementedGocflServiceServer) Add(*AddRequest, GocflService_AddServer) error {
+	return status.Errorf(codes.Unimplemented, "method Add not implemented")
 }
-func (UnimplementedGocflServiceServer) Update(context.Context, *UpdateRequest) (*UpdateResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Update not implemented")
+func (UnimplementedGocflServiceServer) Update(*UpdateRequest, GocflService_UpdateServer) error {
+	return status.Errorf(codes.Unimplemented, "method Update not implemented")
 }
-func (UnimplementedGocflServiceServer) Create(context.Context, *CreateRequest) (*CreateResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Create not implemented")
+func (UnimplementedGocflServiceServer) Create(*CreateRequest, GocflService_CreateServer) error {
+	return status.Errorf(codes.Unimplemented, "method Create not implemented")
 }
-func (UnimplementedGocflServiceServer) Validate(context.Context, *ValidateRequest) (*ValidateResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Validate not implemented")
+func (UnimplementedGocflServiceServer) Validate(*ValidateRequest, GocflService_ValidateServer) error {
+	return status.Errorf(codes.Unimplemented, "method Validate not implemented")
 }
 func (UnimplementedGocflServiceServer) mustEmbedUnimplementedGocflServiceServer() {}
 
@@ -144,94 +259,109 @@ func RegisterGocflServiceServer(s grpc.ServiceRegistrar, srv GocflServiceServer)
 	s.RegisterService(&GocflService_ServiceDesc, srv)
 }
 
-func _GocflService_Init_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(InitRequest)
-	if err := dec(in); err != nil {
-		return nil, err
+func _GocflService_Init_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(InitRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
 	}
-	if interceptor == nil {
-		return srv.(GocflServiceServer).Init(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: GocflService_Init_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(GocflServiceServer).Init(ctx, req.(*InitRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+	return srv.(GocflServiceServer).Init(m, &gocflServiceInitServer{stream})
 }
 
-func _GocflService_Add_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(AddRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(GocflServiceServer).Add(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: GocflService_Add_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(GocflServiceServer).Add(ctx, req.(*AddRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+type GocflService_InitServer interface {
+	Send(*InitResponse) error
+	grpc.ServerStream
 }
 
-func _GocflService_Update_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(UpdateRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(GocflServiceServer).Update(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: GocflService_Update_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(GocflServiceServer).Update(ctx, req.(*UpdateRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+type gocflServiceInitServer struct {
+	grpc.ServerStream
 }
 
-func _GocflService_Create_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CreateRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(GocflServiceServer).Create(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: GocflService_Create_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(GocflServiceServer).Create(ctx, req.(*CreateRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+func (x *gocflServiceInitServer) Send(m *InitResponse) error {
+	return x.ServerStream.SendMsg(m)
 }
 
-func _GocflService_Validate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ValidateRequest)
-	if err := dec(in); err != nil {
-		return nil, err
+func _GocflService_Add_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(AddRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
 	}
-	if interceptor == nil {
-		return srv.(GocflServiceServer).Validate(ctx, in)
+	return srv.(GocflServiceServer).Add(m, &gocflServiceAddServer{stream})
+}
+
+type GocflService_AddServer interface {
+	Send(*AddResponse) error
+	grpc.ServerStream
+}
+
+type gocflServiceAddServer struct {
+	grpc.ServerStream
+}
+
+func (x *gocflServiceAddServer) Send(m *AddResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _GocflService_Update_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(UpdateRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
 	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: GocflService_Validate_FullMethodName,
+	return srv.(GocflServiceServer).Update(m, &gocflServiceUpdateServer{stream})
+}
+
+type GocflService_UpdateServer interface {
+	Send(*UpdateResponse) error
+	grpc.ServerStream
+}
+
+type gocflServiceUpdateServer struct {
+	grpc.ServerStream
+}
+
+func (x *gocflServiceUpdateServer) Send(m *UpdateResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _GocflService_Create_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(CreateRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
 	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(GocflServiceServer).Validate(ctx, req.(*ValidateRequest))
+	return srv.(GocflServiceServer).Create(m, &gocflServiceCreateServer{stream})
+}
+
+type GocflService_CreateServer interface {
+	Send(*CreateResponse) error
+	grpc.ServerStream
+}
+
+type gocflServiceCreateServer struct {
+	grpc.ServerStream
+}
+
+func (x *gocflServiceCreateServer) Send(m *CreateResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _GocflService_Validate_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ValidateRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
 	}
-	return interceptor(ctx, in, info, handler)
+	return srv.(GocflServiceServer).Validate(m, &gocflServiceValidateServer{stream})
+}
+
+type GocflService_ValidateServer interface {
+	Send(*ValidateResponse) error
+	grpc.ServerStream
+}
+
+type gocflServiceValidateServer struct {
+	grpc.ServerStream
+}
+
+func (x *gocflServiceValidateServer) Send(m *ValidateResponse) error {
+	return x.ServerStream.SendMsg(m)
 }
 
 // GocflService_ServiceDesc is the grpc.ServiceDesc for GocflService service.
@@ -240,28 +370,33 @@ func _GocflService_Validate_Handler(srv interface{}, ctx context.Context, dec fu
 var GocflService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "gocfl.GocflService",
 	HandlerType: (*GocflServiceServer)(nil),
-	Methods: []grpc.MethodDesc{
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
 		{
-			MethodName: "Init",
-			Handler:    _GocflService_Init_Handler,
+			StreamName:    "Init",
+			Handler:       _GocflService_Init_Handler,
+			ServerStreams: true,
 		},
 		{
-			MethodName: "Add",
-			Handler:    _GocflService_Add_Handler,
+			StreamName:    "Add",
+			Handler:       _GocflService_Add_Handler,
+			ServerStreams: true,
 		},
 		{
-			MethodName: "Update",
-			Handler:    _GocflService_Update_Handler,
+			StreamName:    "Update",
+			Handler:       _GocflService_Update_Handler,
+			ServerStreams: true,
 		},
 		{
-			MethodName: "Create",
-			Handler:    _GocflService_Create_Handler,
+			StreamName:    "Create",
+			Handler:       _GocflService_Create_Handler,
+			ServerStreams: true,
 		},
 		{
-			MethodName: "Validate",
-			Handler:    _GocflService_Validate_Handler,
+			StreamName:    "Validate",
+			Handler:       _GocflService_Validate_Handler,
+			ServerStreams: true,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
 	Metadata: "gocfl.proto",
 }

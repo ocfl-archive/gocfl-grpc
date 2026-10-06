@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"sync"
+	"time"
 
 	"github.com/je4/utils/v2/pkg/checksum"
 	"github.com/je4/utils/v2/pkg/zLogger"
@@ -148,10 +150,45 @@ func (s *GocflService) newLogger(ctx context.Context, ver version.OCFLVersion) o
 	return ocfl.NewOCFLLogger(ctx, s.logger, nil, ver, nil)
 }
 
+func (s *GocflService) newStreamLogger(ctx context.Context, ver version.OCFLVersion, sendLog func(*pb.LogEntry) error) ocfllogger.OCFLLogger {
+	if sendLog == nil {
+		return s.newLogger(ctx, ver)
+	}
+
+	hook := zerolog.HookFunc(func(e *zerolog.Event, level zerolog.Level, message string) {
+		entry := &pb.LogEntry{
+			Timestamp: time.Now().UnixNano(),
+			Level:     level.String(),
+			Message:   message,
+			JsonRaw:   fmt.Sprintf(`{"level":"%s","time":"%s","message":%q}`, level.String(), time.Now().Format(time.RFC3339Nano), message),
+		}
+		_ = sendLog(entry)
+	})
+
+	if zl, ok := s.logger.(*zerolog.Logger); ok {
+		reqLogger := zl.Hook(hook)
+		return ocfl.NewOCFLLogger(ctx, &reqLogger, nil, ver, nil)
+	}
+
+	return s.newLogger(ctx, ver)
+}
+
 // Init initializes an empty OCFL storage root.
-func (s *GocflService) Init(ctx context.Context, req *pb.InitRequest) (*pb.InitResponse, error) {
+func (s *GocflService) Init(req *pb.InitRequest, stream pb.GocflService_InitServer) error {
 	if req.GetOcflPath() == "" {
-		return nil, status.Error(codes.InvalidArgument, "ocfl_path is required")
+		return status.Error(codes.InvalidArgument, "ocfl_path is required")
+	}
+
+	ctx := stream.Context()
+	var streamMu sync.Mutex
+	sendLog := func(entry *pb.LogEntry) error {
+		streamMu.Lock()
+		defer streamMu.Unlock()
+		return stream.Send(&pb.InitResponse{
+			Payload: &pb.InitResponse_Log{
+				Log: entry,
+			},
+		})
 	}
 
 	ocflVer := version.Default
@@ -164,12 +201,12 @@ func (s *GocflService) Init(ctx context.Context, req *pb.InitRequest) (*pb.InitR
 		digest = checksum.DigestAlgorithm(req.GetDigest())
 	}
 
-	logger := s.newLogger(ctx, ocflVer)
+	logger := s.newStreamLogger(ctx, ocflVer, sendLog)
 
 	srPath := writefs.RealPath(s.vfs, req.GetOcflPath())
 	storageRootFS, closer, err := appendfs.Sub(s.vfs, srPath)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to create subfs for storage root '%s': %v", srPath, err)
+		return status.Errorf(codes.Internal, "failed to create subfs for storage root '%s': %v", srPath, err)
 	}
 	defer func() { _ = closer.Close() }()
 
@@ -180,29 +217,47 @@ func (s *GocflService) Init(ctx context.Context, req *pb.InitRequest) (*pb.InitR
 
 	sr, err := ocfl.InitStorageRoot(ctx, storageRootFS, extFS, ocflVer, digest, req.GetExtensionParams(), logger)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to initialize storage root: %v", err)
+		return status.Errorf(codes.Internal, "failed to initialize storage root: %v", err)
 	}
 	defer func() { _ = sr.Close() }()
 
-	return &pb.InitResponse{
-		Success: true,
-		Message: fmt.Sprintf("storage root initialized at '%s'", req.GetOcflPath()),
-	}, nil
+	streamMu.Lock()
+	defer streamMu.Unlock()
+	return stream.Send(&pb.InitResponse{
+		Payload: &pb.InitResponse_Result{
+			Result: &pb.InitResult{
+				Success: true,
+				Message: fmt.Sprintf("storage root initialized at '%s'", req.GetOcflPath()),
+			},
+		},
+	})
 }
 
 // Add adds a new object into an existing OCFL structure.
-func (s *GocflService) Add(ctx context.Context, req *pb.AddRequest) (*pb.AddResponse, error) {
+func (s *GocflService) Add(req *pb.AddRequest, stream pb.GocflService_AddServer) error {
 	if req.GetOcflPath() == "" {
-		return nil, status.Error(codes.InvalidArgument, "ocfl_path is required")
+		return status.Error(codes.InvalidArgument, "ocfl_path is required")
 	}
 	if req.GetObjectId() == "" {
-		return nil, status.Error(codes.InvalidArgument, "object_id is required")
+		return status.Error(codes.InvalidArgument, "object_id is required")
+	}
+
+	ctx := stream.Context()
+	var streamMu sync.Mutex
+	sendLog := func(entry *pb.LogEntry) error {
+		streamMu.Lock()
+		defer streamMu.Unlock()
+		return stream.Send(&pb.AddResponse{
+			Payload: &pb.AddResponse_Log{
+				Log: entry,
+			},
+		})
 	}
 
 	srPath := writefs.RealPath(s.vfs, req.GetOcflPath())
 	storageRootFS, closer, err := appendfs.Sub(s.vfs, srPath)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to create subfs for storage root '%s': %v", srPath, err)
+		return status.Errorf(codes.Internal, "failed to create subfs for storage root '%s': %v", srPath, err)
 	}
 	defer func() { _ = closer.Close() }()
 
@@ -211,30 +266,30 @@ func (s *GocflService) Add(ctx context.Context, req *pb.AddRequest) (*pb.AddResp
 		ocflVer = version.Default
 	}
 
-	logger := s.newLogger(ctx, ocflVer)
+	logger := s.newStreamLogger(ctx, ocflVer, sendLog)
 
 	sr, err := ocfl.LoadStorageRoot(ctx, storageRootFS, req.GetExtensionParams(), nil, logger)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to load storage root: %v", err)
+		return status.Errorf(codes.Internal, "failed to load storage root: %v", err)
 	}
 	defer func() { _ = sr.Close() }()
 
 	exists, err := sr.ObjectExists(req.GetObjectId())
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to check if object exists: %v", err)
+		return status.Errorf(codes.Internal, "failed to check if object exists: %v", err)
 	}
 	if exists {
-		return nil, status.Errorf(codes.AlreadyExists, "object '%s' already exists in storage root", req.GetObjectId())
+		return status.Errorf(codes.AlreadyExists, "object '%s' already exists in storage root", req.GetObjectId())
 	}
 
 	objFolder, err := sr.IdToFolder(req.GetObjectId())
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to map id to folder: %v", err)
+		return status.Errorf(codes.Internal, "failed to map id to folder: %v", err)
 	}
 
 	objFS, objCloser, err := appendfs.Sub(storageRootFS, objFolder)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to create subfs for object folder '%s': %v", objFolder, err)
+		return status.Errorf(codes.Internal, "failed to create subfs for object folder '%s': %v", objFolder, err)
 	}
 	defer func() { _ = objCloser.Close() }()
 
@@ -253,7 +308,7 @@ func (s *GocflService) Add(ctx context.Context, req *pb.AddRequest) (*pb.AddResp
 
 	obj, err := ocfl.InitObject(ctx, objFS, extFS, sr.GetOCFLVersion(), req.GetObjectId(), digest, req.GetExtensionParams(), logger)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to initialize object '%s': %v", req.GetObjectId(), err)
+		return status.Errorf(codes.Internal, "failed to initialize object '%s': %v", req.GetObjectId(), err)
 	}
 	defer func() { _ = obj.Close() }()
 
@@ -270,7 +325,7 @@ func (s *GocflService) Add(ctx context.Context, req *pb.AddRequest) (*pb.AddResp
 
 	vw, err := obj.StartUpdate(msg, userName, userAddress, false)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to start update: %v", err)
+		return status.Errorf(codes.Internal, "failed to start update: %v", err)
 	}
 	defer func() {
 		if vw != nil {
@@ -281,10 +336,10 @@ func (s *GocflService) Add(ctx context.Context, req *pb.AddRequest) (*pb.AddResp
 	if req.GetSrcPath() != "" {
 		srcFS, err := fs.Sub(s.vfs, writefs.RealPath(s.vfs, req.GetSrcPath()))
 		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "failed to open src_path '%s': %v", req.GetSrcPath(), err)
+			return status.Errorf(codes.InvalidArgument, "failed to open src_path '%s': %v", req.GetSrcPath(), err)
 		}
 		if err := vw.AddFolder(srcFS, req.GetDeduplicate(), req.GetDefaultArea()); err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to add source folder: %v", err)
+			return status.Errorf(codes.Internal, "failed to add source folder: %v", err)
 		}
 	}
 
@@ -292,16 +347,16 @@ func (s *GocflService) Add(ctx context.Context, req *pb.AddRequest) (*pb.AddResp
 		for areaName, areaPath := range req.GetAreaPaths() {
 			areaFS, err := fs.Sub(s.vfs, writefs.RealPath(s.vfs, areaPath))
 			if err != nil {
-				return nil, status.Errorf(codes.InvalidArgument, "failed to open area path '%s': %v", areaPath, err)
+				return status.Errorf(codes.InvalidArgument, "failed to open area path '%s': %v", areaPath, err)
 			}
 			if err := vw.AddFolder(areaFS, req.GetDeduplicate(), areaName); err != nil {
-				return nil, status.Errorf(codes.Internal, "failed to add area '%s' folder: %v", areaName, err)
+				return status.Errorf(codes.Internal, "failed to add area '%s' folder: %v", areaName, err)
 			}
 		}
 	}
 
 	if err := vw.Close(); err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to close version writer: %v", err)
+		return status.Errorf(codes.Internal, "failed to close version writer: %v", err)
 	}
 	vw = nil
 
@@ -310,27 +365,45 @@ func (s *GocflService) Add(ctx context.Context, req *pb.AddRequest) (*pb.AddResp
 		versionStr = obj.GetInventory().GetHead().String()
 	}
 
-	return &pb.AddResponse{
-		Success:  true,
-		Message:  fmt.Sprintf("object '%s' added successfully", req.GetObjectId()),
-		ObjectId: req.GetObjectId(),
-		Version:  versionStr,
-	}, nil
+	streamMu.Lock()
+	defer streamMu.Unlock()
+	return stream.Send(&pb.AddResponse{
+		Payload: &pb.AddResponse_Result{
+			Result: &pb.AddResult{
+				Success:  true,
+				Message:  fmt.Sprintf("object '%s' added successfully", req.GetObjectId()),
+				ObjectId: req.GetObjectId(),
+				Version:  versionStr,
+			},
+		},
+	})
 }
 
 // Update adds a new version to an existing object in an OCFL structure.
-func (s *GocflService) Update(ctx context.Context, req *pb.UpdateRequest) (*pb.UpdateResponse, error) {
+func (s *GocflService) Update(req *pb.UpdateRequest, stream pb.GocflService_UpdateServer) error {
 	if req.GetOcflPath() == "" {
-		return nil, status.Error(codes.InvalidArgument, "ocfl_path is required")
+		return status.Error(codes.InvalidArgument, "ocfl_path is required")
 	}
 	if req.GetObjectId() == "" {
-		return nil, status.Error(codes.InvalidArgument, "object_id is required")
+		return status.Error(codes.InvalidArgument, "object_id is required")
+	}
+
+	ctx := stream.Context()
+	var streamMu sync.Mutex
+	sendLog := func(entry *pb.LogEntry) error {
+		streamMu.Lock()
+		defer streamMu.Unlock()
+		return stream.Send(&pb.UpdateResponse{
+			Payload: &pb.UpdateResponse_Log{
+				Log: entry,
+			},
+		})
 	}
 
 	srPath := writefs.RealPath(s.vfs, req.GetOcflPath())
 	storageRootFS, closer, err := appendfs.Sub(s.vfs, srPath)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to create subfs for storage root '%s': %v", srPath, err)
+		return status.Errorf(codes.Internal, "failed to create subfs for storage root '%s': %v", srPath, err)
 	}
 	defer func() { _ = closer.Close() }()
 
@@ -339,28 +412,28 @@ func (s *GocflService) Update(ctx context.Context, req *pb.UpdateRequest) (*pb.U
 		ocflVer = version.Default
 	}
 
-	logger := s.newLogger(ctx, ocflVer)
+	logger := s.newStreamLogger(ctx, ocflVer, sendLog)
 
 	sr, err := ocfl.LoadStorageRoot(ctx, storageRootFS, req.GetExtensionParams(), nil, logger)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to load storage root: %v", err)
+		return status.Errorf(codes.Internal, "failed to load storage root: %v", err)
 	}
 	defer func() { _ = sr.Close() }()
 
 	objFolder, err := sr.IdToFolder(req.GetObjectId())
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to map id to folder: %v", err)
+		return status.Errorf(codes.Internal, "failed to map id to folder: %v", err)
 	}
 
 	objFS, objCloser, err := appendfs.Sub(storageRootFS, objFolder)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to create subfs for object folder '%s': %v", objFolder, err)
+		return status.Errorf(codes.Internal, "failed to create subfs for object folder '%s': %v", objFolder, err)
 	}
 	defer func() { _ = objCloser.Close() }()
 
 	obj, err := ocfl.LoadObject(ctx, objFS, req.GetExtensionParams(), logger)
 	if err != nil {
-		return nil, status.Errorf(codes.NotFound, "failed to load object '%s': %v", req.GetObjectId(), err)
+		return status.Errorf(codes.NotFound, "failed to load object '%s': %v", req.GetObjectId(), err)
 	}
 	defer func() { _ = obj.Close() }()
 
@@ -377,7 +450,7 @@ func (s *GocflService) Update(ctx context.Context, req *pb.UpdateRequest) (*pb.U
 
 	vw, err := obj.StartUpdate(msg, userName, userAddress, req.GetEcho())
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to start update: %v", err)
+		return status.Errorf(codes.Internal, "failed to start update: %v", err)
 	}
 	defer func() {
 		if vw != nil {
@@ -388,10 +461,10 @@ func (s *GocflService) Update(ctx context.Context, req *pb.UpdateRequest) (*pb.U
 	if req.GetSrcPath() != "" {
 		srcFS, err := fs.Sub(s.vfs, writefs.RealPath(s.vfs, req.GetSrcPath()))
 		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "failed to open src_path '%s': %v", req.GetSrcPath(), err)
+			return status.Errorf(codes.InvalidArgument, "failed to open src_path '%s': %v", req.GetSrcPath(), err)
 		}
 		if err := vw.AddFolder(srcFS, req.GetDeduplicate(), ""); err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to add source folder: %v", err)
+			return status.Errorf(codes.Internal, "failed to add source folder: %v", err)
 		}
 	}
 
@@ -399,16 +472,16 @@ func (s *GocflService) Update(ctx context.Context, req *pb.UpdateRequest) (*pb.U
 		for areaName, areaPath := range req.GetAreaPaths() {
 			areaFS, err := fs.Sub(s.vfs, writefs.RealPath(s.vfs, areaPath))
 			if err != nil {
-				return nil, status.Errorf(codes.InvalidArgument, "failed to open area path '%s': %v", areaPath, err)
+				return status.Errorf(codes.InvalidArgument, "failed to open area path '%s': %v", areaPath, err)
 			}
 			if err := vw.AddFolder(areaFS, req.GetDeduplicate(), areaName); err != nil {
-				return nil, status.Errorf(codes.Internal, "failed to add area '%s' folder: %v", areaName, err)
+				return status.Errorf(codes.Internal, "failed to add area '%s' folder: %v", areaName, err)
 			}
 		}
 	}
 
 	if err := vw.Close(); err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to close version writer: %v", err)
+		return status.Errorf(codes.Internal, "failed to close version writer: %v", err)
 	}
 	vw = nil
 
@@ -417,21 +490,39 @@ func (s *GocflService) Update(ctx context.Context, req *pb.UpdateRequest) (*pb.U
 		versionStr = obj.GetInventory().GetHead().String()
 	}
 
-	return &pb.UpdateResponse{
-		Success:  true,
-		Message:  fmt.Sprintf("object '%s' updated successfully", req.GetObjectId()),
-		ObjectId: req.GetObjectId(),
-		Version:  versionStr,
-	}, nil
+	streamMu.Lock()
+	defer streamMu.Unlock()
+	return stream.Send(&pb.UpdateResponse{
+		Payload: &pb.UpdateResponse_Result{
+			Result: &pb.UpdateResult{
+				Success:  true,
+				Message:  fmt.Sprintf("object '%s' updated successfully", req.GetObjectId()),
+				ObjectId: req.GetObjectId(),
+				Version:  versionStr,
+			},
+		},
+	})
 }
 
 // Create initializes an OCFL structure and adds an initial object.
-func (s *GocflService) Create(ctx context.Context, req *pb.CreateRequest) (*pb.CreateResponse, error) {
+func (s *GocflService) Create(req *pb.CreateRequest, stream pb.GocflService_CreateServer) error {
 	if req.GetOcflPath() == "" {
-		return nil, status.Error(codes.InvalidArgument, "ocfl_path is required")
+		return status.Error(codes.InvalidArgument, "ocfl_path is required")
 	}
 	if req.GetObjectId() == "" {
-		return nil, status.Error(codes.InvalidArgument, "object_id is required")
+		return status.Error(codes.InvalidArgument, "object_id is required")
+	}
+
+	ctx := stream.Context()
+	var streamMu sync.Mutex
+	sendLog := func(entry *pb.LogEntry) error {
+		streamMu.Lock()
+		defer streamMu.Unlock()
+		return stream.Send(&pb.CreateResponse{
+			Payload: &pb.CreateResponse_Log{
+				Log: entry,
+			},
+		})
 	}
 
 	ocflVer := version.Default
@@ -444,12 +535,12 @@ func (s *GocflService) Create(ctx context.Context, req *pb.CreateRequest) (*pb.C
 		digest = checksum.DigestAlgorithm(req.GetDigest())
 	}
 
-	logger := s.newLogger(ctx, ocflVer)
+	logger := s.newStreamLogger(ctx, ocflVer, sendLog)
 
 	srPath := writefs.RealPath(s.vfs, req.GetOcflPath())
 	storageRootFS, closer, err := appendfs.Sub(s.vfs, srPath)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to create subfs for storage root '%s': %v", srPath, err)
+		return status.Errorf(codes.Internal, "failed to create subfs for storage root '%s': %v", srPath, err)
 	}
 	defer func() { _ = closer.Close() }()
 
@@ -460,18 +551,18 @@ func (s *GocflService) Create(ctx context.Context, req *pb.CreateRequest) (*pb.C
 
 	sr, err := ocfl.InitStorageRoot(ctx, storageRootFS, srExtFS, ocflVer, digest, req.GetExtensionParams(), logger)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to initialize storage root: %v", err)
+		return status.Errorf(codes.Internal, "failed to initialize storage root: %v", err)
 	}
 	defer func() { _ = sr.Close() }()
 
 	objFolder, err := sr.IdToFolder(req.GetObjectId())
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to map id to folder: %v", err)
+		return status.Errorf(codes.Internal, "failed to map id to folder: %v", err)
 	}
 
 	objFS, objCloser, err := appendfs.Sub(storageRootFS, objFolder)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to create subfs for object folder '%s': %v", objFolder, err)
+		return status.Errorf(codes.Internal, "failed to create subfs for object folder '%s': %v", objFolder, err)
 	}
 	defer func() { _ = objCloser.Close() }()
 
@@ -482,7 +573,7 @@ func (s *GocflService) Create(ctx context.Context, req *pb.CreateRequest) (*pb.C
 
 	obj, err := ocfl.InitObject(ctx, objFS, objExtFS, ocflVer, req.GetObjectId(), digest, req.GetExtensionParams(), logger)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to initialize object '%s': %v", req.GetObjectId(), err)
+		return status.Errorf(codes.Internal, "failed to initialize object '%s': %v", req.GetObjectId(), err)
 	}
 	defer func() { _ = obj.Close() }()
 
@@ -499,7 +590,7 @@ func (s *GocflService) Create(ctx context.Context, req *pb.CreateRequest) (*pb.C
 
 	vw, err := obj.StartUpdate(msg, userName, userAddress, false)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to start update: %v", err)
+		return status.Errorf(codes.Internal, "failed to start update: %v", err)
 	}
 	defer func() {
 		if vw != nil {
@@ -510,10 +601,10 @@ func (s *GocflService) Create(ctx context.Context, req *pb.CreateRequest) (*pb.C
 	if req.GetSrcPath() != "" {
 		srcFS, err := fs.Sub(s.vfs, writefs.RealPath(s.vfs, req.GetSrcPath()))
 		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "failed to open src_path '%s': %v", req.GetSrcPath(), err)
+			return status.Errorf(codes.InvalidArgument, "failed to open src_path '%s': %v", req.GetSrcPath(), err)
 		}
 		if err := vw.AddFolder(srcFS, req.GetDeduplicate(), req.GetDefaultArea()); err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to add source folder: %v", err)
+			return status.Errorf(codes.Internal, "failed to add source folder: %v", err)
 		}
 	}
 
@@ -521,16 +612,16 @@ func (s *GocflService) Create(ctx context.Context, req *pb.CreateRequest) (*pb.C
 		for areaName, areaPath := range req.GetAreaPaths() {
 			areaFS, err := fs.Sub(s.vfs, writefs.RealPath(s.vfs, areaPath))
 			if err != nil {
-				return nil, status.Errorf(codes.InvalidArgument, "failed to open area path '%s': %v", areaPath, err)
+				return status.Errorf(codes.InvalidArgument, "failed to open area path '%s': %v", areaPath, err)
 			}
 			if err := vw.AddFolder(areaFS, req.GetDeduplicate(), areaName); err != nil {
-				return nil, status.Errorf(codes.Internal, "failed to add area '%s' folder: %v", areaName, err)
+				return status.Errorf(codes.Internal, "failed to add area '%s' folder: %v", areaName, err)
 			}
 		}
 	}
 
 	if err := vw.Close(); err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to close version writer: %v", err)
+		return status.Errorf(codes.Internal, "failed to close version writer: %v", err)
 	}
 	vw = nil
 
@@ -539,18 +630,36 @@ func (s *GocflService) Create(ctx context.Context, req *pb.CreateRequest) (*pb.C
 		versionStr = obj.GetInventory().GetHead().String()
 	}
 
-	return &pb.CreateResponse{
-		Success:  true,
-		Message:  fmt.Sprintf("storage root and object '%s' created successfully", req.GetObjectId()),
-		ObjectId: req.GetObjectId(),
-		Version:  versionStr,
-	}, nil
+	streamMu.Lock()
+	defer streamMu.Unlock()
+	return stream.Send(&pb.CreateResponse{
+		Payload: &pb.CreateResponse_Result{
+			Result: &pb.CreateResult{
+				Success:  true,
+				Message:  fmt.Sprintf("storage root and object '%s' created successfully", req.GetObjectId()),
+				ObjectId: req.GetObjectId(),
+				Version:  versionStr,
+			},
+		},
+	})
 }
 
 // Validate validates an OCFL storage root or a specific object.
-func (s *GocflService) Validate(ctx context.Context, req *pb.ValidateRequest) (*pb.ValidateResponse, error) {
+func (s *GocflService) Validate(req *pb.ValidateRequest, stream pb.GocflService_ValidateServer) error {
 	if req.GetOcflPath() == "" && req.GetObjectPath() == "" {
-		return nil, status.Error(codes.InvalidArgument, "either ocfl_path or object_path is required")
+		return status.Error(codes.InvalidArgument, "either ocfl_path or object_path is required")
+	}
+
+	ctx := stream.Context()
+	var streamMu sync.Mutex
+	sendLog := func(entry *pb.LogEntry) error {
+		streamMu.Lock()
+		defer streamMu.Unlock()
+		return stream.Send(&pb.ValidateResponse{
+			Payload: &pb.ValidateResponse_Log{
+				Log: entry,
+			},
+		})
 	}
 
 	var ocflVer = version.Default
@@ -563,7 +672,7 @@ func (s *GocflService) Validate(ctx context.Context, req *pb.ValidateRequest) (*
 		srPath := writefs.RealPath(s.vfs, req.GetOcflPath())
 		subFS, err := fs.Sub(s.vfs, srPath)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to create subfs for storage root '%s': %v", srPath, err)
+			return status.Errorf(codes.Internal, "failed to create subfs for storage root '%s': %v", srPath, err)
 		}
 		storageRootFS = subFS
 
@@ -573,7 +682,7 @@ func (s *GocflService) Validate(ctx context.Context, req *pb.ValidateRequest) (*
 		}
 	}
 
-	logger := s.newLogger(ctx, ocflVer)
+	logger := s.newStreamLogger(ctx, ocflVer, sendLog)
 
 	var valErrors []*pb.ValidationError
 	var warnings []string
@@ -582,10 +691,16 @@ func (s *GocflService) Validate(ctx context.Context, req *pb.ValidateRequest) (*
 		// Storage Root Validation
 		sr, err := ocfl.LoadStorageRoot(ctx, storageRootFS, req.GetExtensionParams(), nil, logger)
 		if err != nil {
-			return &pb.ValidateResponse{
-				IsValid: false,
-				Message: fmt.Sprintf("failed to load storage root: %v", err),
-			}, nil
+			streamMu.Lock()
+			defer streamMu.Unlock()
+			return stream.Send(&pb.ValidateResponse{
+				Payload: &pb.ValidateResponse_Result{
+					Result: &pb.ValidateResult{
+						IsValid: false,
+						Message: fmt.Sprintf("failed to load storage root: %v", err),
+					},
+				},
+			})
 		}
 		defer func() { _ = sr.Close() }()
 
@@ -597,31 +712,43 @@ func (s *GocflService) Validate(ctx context.Context, req *pb.ValidateRequest) (*
 		if storageRootFS != nil && req.GetObjectId() != "" {
 			sr, err := ocfl.LoadStorageRoot(ctx, storageRootFS, req.GetExtensionParams(), nil, logger)
 			if err != nil {
-				return &pb.ValidateResponse{
-					IsValid: false,
-					Message: fmt.Sprintf("failed to load storage root: %v", err),
-				}, nil
+				streamMu.Lock()
+				defer streamMu.Unlock()
+				return stream.Send(&pb.ValidateResponse{
+					Payload: &pb.ValidateResponse_Result{
+						Result: &pb.ValidateResult{
+							IsValid: false,
+							Message: fmt.Sprintf("failed to load storage root: %v", err),
+						},
+					},
+				})
 			}
 			defer func() { _ = sr.Close() }()
 
 			folder, err := sr.IdToFolder(req.GetObjectId())
 			if err != nil {
-				return nil, status.Errorf(codes.Internal, "failed to get folder for id '%s': %v", req.GetObjectId(), err)
+				return status.Errorf(codes.Internal, "failed to get folder for id '%s': %v", req.GetObjectId(), err)
 			}
 			objFolder = writefs.RealPath(s.vfs, req.GetOcflPath()+"/"+folder)
 		}
 
 		objFS, err := fs.Sub(s.vfs, objFolder)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to create subfs for object '%s': %v", objFolder, err)
+			return status.Errorf(codes.Internal, "failed to create subfs for object '%s': %v", objFolder, err)
 		}
 
 		obj, err := ocfl.LoadObject(ctx, objFS, req.GetExtensionParams(), logger)
 		if err != nil {
-			return &pb.ValidateResponse{
-				IsValid: false,
-				Message: fmt.Sprintf("failed to load object: %v", err),
-			}, nil
+			streamMu.Lock()
+			defer streamMu.Unlock()
+			return stream.Send(&pb.ValidateResponse{
+				Payload: &pb.ValidateResponse_Result{
+					Result: &pb.ValidateResult{
+						IsValid: false,
+						Message: fmt.Sprintf("failed to load object: %v", err),
+					},
+				},
+			})
 		}
 		defer func() { _ = obj.Close() }()
 
@@ -655,10 +782,16 @@ func (s *GocflService) Validate(ctx context.Context, req *pb.ValidateRequest) (*
 		msg = fmt.Sprintf("validation successful with %d warning(s)", len(warnings))
 	}
 
-	return &pb.ValidateResponse{
-		IsValid:  isValid,
-		Message:  msg,
-		Errors:   valErrors,
-		Warnings: warnings,
-	}, nil
+	streamMu.Lock()
+	defer streamMu.Unlock()
+	return stream.Send(&pb.ValidateResponse{
+		Payload: &pb.ValidateResponse_Result{
+			Result: &pb.ValidateResult{
+				IsValid:  isValid,
+				Message:  msg,
+				Errors:   valErrors,
+				Warnings: warnings,
+			},
+		},
+	})
 }

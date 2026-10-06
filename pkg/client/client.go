@@ -17,13 +17,45 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+// LogHandler is a callback function invoked when a log entry is streamed from the server.
+type LogHandler func(*pb.LogEntry)
+
+// CallOption configures individual client operation calls.
+type CallOption func(*callOptions)
+
+type callOptions struct {
+	logHandler LogHandler
+	grpcOpts   []grpc.CallOption
+}
+
+// WithCallLogHandler sets a log handler for receiving live server log messages during the call.
+func WithCallLogHandler(handler LogHandler) CallOption {
+	return func(o *callOptions) {
+		o.logHandler = handler
+	}
+}
+
+// WithGRPCOptions adds grpc.CallOptions to the gRPC stream.
+func WithGRPCOptions(opts ...grpc.CallOption) CallOption {
+	return func(o *callOptions) {
+		o.grpcOpts = append(o.grpcOpts, opts...)
+	}
+}
+
 // GocflClient defines the interface for interacting with the gocfl gRPC service.
 type GocflClient interface {
-	Init(ctx context.Context, req *pb.InitRequest, opts ...grpc.CallOption) (*pb.InitResponse, error)
-	Add(ctx context.Context, req *pb.AddRequest, opts ...grpc.CallOption) (*pb.AddResponse, error)
-	Update(ctx context.Context, req *pb.UpdateRequest, opts ...grpc.CallOption) (*pb.UpdateResponse, error)
-	Create(ctx context.Context, req *pb.CreateRequest, opts ...grpc.CallOption) (*pb.CreateResponse, error)
-	Validate(ctx context.Context, req *pb.ValidateRequest, opts ...grpc.CallOption) (*pb.ValidateResponse, error)
+	Init(ctx context.Context, req *pb.InitRequest, opts ...CallOption) (*pb.InitResult, error)
+	Add(ctx context.Context, req *pb.AddRequest, opts ...CallOption) (*pb.AddResult, error)
+	Update(ctx context.Context, req *pb.UpdateRequest, opts ...CallOption) (*pb.UpdateResult, error)
+	Create(ctx context.Context, req *pb.CreateRequest, opts ...CallOption) (*pb.CreateResult, error)
+	Validate(ctx context.Context, req *pb.ValidateRequest, opts ...CallOption) (*pb.ValidateResult, error)
+
+	InitStream(ctx context.Context, req *pb.InitRequest, opts ...grpc.CallOption) (pb.GocflService_InitClient, error)
+	AddStream(ctx context.Context, req *pb.AddRequest, opts ...grpc.CallOption) (pb.GocflService_AddClient, error)
+	UpdateStream(ctx context.Context, req *pb.UpdateRequest, opts ...grpc.CallOption) (pb.GocflService_UpdateClient, error)
+	CreateStream(ctx context.Context, req *pb.CreateRequest, opts ...grpc.CallOption) (pb.GocflService_CreateClient, error)
+	ValidateStream(ctx context.Context, req *pb.ValidateRequest, opts ...grpc.CallOption) (pb.GocflService_ValidateClient, error)
+
 	GRPCClient() pb.GocflServiceClient
 	Conn() *grpc.ClientConn
 	Close() error
@@ -174,27 +206,207 @@ func (c *Client) Close() error {
 	return nil
 }
 
-// Init initializes an empty OCFL storage root.
-func (c *Client) Init(ctx context.Context, req *pb.InitRequest, opts ...grpc.CallOption) (*pb.InitResponse, error) {
+// InitStream initiates the Init stream.
+func (c *Client) InitStream(ctx context.Context, req *pb.InitRequest, opts ...grpc.CallOption) (pb.GocflService_InitClient, error) {
 	return c.grpcClient.Init(ctx, req, opts...)
 }
 
-// Add adds a new object into an existing OCFL structure.
-func (c *Client) Add(ctx context.Context, req *pb.AddRequest, opts ...grpc.CallOption) (*pb.AddResponse, error) {
+// Init initializes an empty OCFL storage root, draining logs and returning the final result.
+func (c *Client) Init(ctx context.Context, req *pb.InitRequest, opts ...CallOption) (*pb.InitResult, error) {
+	co := &callOptions{}
+	for _, o := range opts {
+		o(co)
+	}
+
+	stream, err := c.grpcClient.Init(ctx, req, co.grpcOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result *pb.InitResult
+	for {
+		resp, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if logEntry := resp.GetLog(); logEntry != nil {
+			if co.logHandler != nil {
+				co.logHandler(logEntry)
+			}
+		}
+		if res := resp.GetResult(); res != nil {
+			result = res
+		}
+	}
+	if result == nil {
+		return nil, errors.New("server closed stream without returning a result")
+	}
+	return result, nil
+}
+
+// AddStream initiates the Add stream.
+func (c *Client) AddStream(ctx context.Context, req *pb.AddRequest, opts ...grpc.CallOption) (pb.GocflService_AddClient, error) {
 	return c.grpcClient.Add(ctx, req, opts...)
 }
 
-// Update adds a new version to an existing object in an OCFL structure.
-func (c *Client) Update(ctx context.Context, req *pb.UpdateRequest, opts ...grpc.CallOption) (*pb.UpdateResponse, error) {
+// Add adds a new object into an existing OCFL structure, draining logs and returning the final result.
+func (c *Client) Add(ctx context.Context, req *pb.AddRequest, opts ...CallOption) (*pb.AddResult, error) {
+	co := &callOptions{}
+	for _, o := range opts {
+		o(co)
+	}
+
+	stream, err := c.grpcClient.Add(ctx, req, co.grpcOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result *pb.AddResult
+	for {
+		resp, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if logEntry := resp.GetLog(); logEntry != nil {
+			if co.logHandler != nil {
+				co.logHandler(logEntry)
+			}
+		}
+		if res := resp.GetResult(); res != nil {
+			result = res
+		}
+	}
+	if result == nil {
+		return nil, errors.New("server closed stream without returning a result")
+	}
+	return result, nil
+}
+
+// UpdateStream initiates the Update stream.
+func (c *Client) UpdateStream(ctx context.Context, req *pb.UpdateRequest, opts ...grpc.CallOption) (pb.GocflService_UpdateClient, error) {
 	return c.grpcClient.Update(ctx, req, opts...)
 }
 
-// Create initializes an OCFL structure and adds an initial object.
-func (c *Client) Create(ctx context.Context, req *pb.CreateRequest, opts ...grpc.CallOption) (*pb.CreateResponse, error) {
+// Update adds a new version to an existing object in an OCFL structure, draining logs and returning the final result.
+func (c *Client) Update(ctx context.Context, req *pb.UpdateRequest, opts ...CallOption) (*pb.UpdateResult, error) {
+	co := &callOptions{}
+	for _, o := range opts {
+		o(co)
+	}
+
+	stream, err := c.grpcClient.Update(ctx, req, co.grpcOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result *pb.UpdateResult
+	for {
+		resp, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if logEntry := resp.GetLog(); logEntry != nil {
+			if co.logHandler != nil {
+				co.logHandler(logEntry)
+			}
+		}
+		if res := resp.GetResult(); res != nil {
+			result = res
+		}
+	}
+	if result == nil {
+		return nil, errors.New("server closed stream without returning a result")
+	}
+	return result, nil
+}
+
+// CreateStream initiates the Create stream.
+func (c *Client) CreateStream(ctx context.Context, req *pb.CreateRequest, opts ...grpc.CallOption) (pb.GocflService_CreateClient, error) {
 	return c.grpcClient.Create(ctx, req, opts...)
 }
 
-// Validate validates an OCFL storage root or a specific object.
-func (c *Client) Validate(ctx context.Context, req *pb.ValidateRequest, opts ...grpc.CallOption) (*pb.ValidateResponse, error) {
+// Create initializes an OCFL structure and adds an initial object, draining logs and returning the final result.
+func (c *Client) Create(ctx context.Context, req *pb.CreateRequest, opts ...CallOption) (*pb.CreateResult, error) {
+	co := &callOptions{}
+	for _, o := range opts {
+		o(co)
+	}
+
+	stream, err := c.grpcClient.Create(ctx, req, co.grpcOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result *pb.CreateResult
+	for {
+		resp, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if logEntry := resp.GetLog(); logEntry != nil {
+			if co.logHandler != nil {
+				co.logHandler(logEntry)
+			}
+		}
+		if res := resp.GetResult(); res != nil {
+			result = res
+		}
+	}
+	if result == nil {
+		return nil, errors.New("server closed stream without returning a result")
+	}
+	return result, nil
+}
+
+// ValidateStream initiates the Validate stream.
+func (c *Client) ValidateStream(ctx context.Context, req *pb.ValidateRequest, opts ...grpc.CallOption) (pb.GocflService_ValidateClient, error) {
 	return c.grpcClient.Validate(ctx, req, opts...)
+}
+
+// Validate validates an OCFL storage root or a specific object, draining logs and returning the final result.
+func (c *Client) Validate(ctx context.Context, req *pb.ValidateRequest, opts ...CallOption) (*pb.ValidateResult, error) {
+	co := &callOptions{}
+	for _, o := range opts {
+		o(co)
+	}
+
+	stream, err := c.grpcClient.Validate(ctx, req, co.grpcOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result *pb.ValidateResult
+	for {
+		resp, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if logEntry := resp.GetLog(); logEntry != nil {
+			if co.logHandler != nil {
+				co.logHandler(logEntry)
+			}
+		}
+		if res := resp.GetResult(); res != nil {
+			result = res
+		}
+	}
+	if result == nil {
+		return nil, errors.New("server closed stream without returning a result")
+	}
+	return result, nil
 }

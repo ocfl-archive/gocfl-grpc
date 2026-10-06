@@ -2,8 +2,8 @@
 //
 // The client supports connecting to a gocfl gRPC server over plain TCP or TLS (including
 // dynamic TLS certificate management via certloader). It provides convenient wrapper methods
-// for all OCFL operations (Init, Add, Update, Create, and Validate) as well as direct access
-// to the underlying gRPC client and connection.
+// for all OCFL operations (Init, Add, Update, Create, and Validate) with optional live log streaming
+// callbacks, as well as direct access to the underlying gRPC client streams and connection.
 //
 // # Quickstart
 //
@@ -13,12 +13,14 @@
 //	}
 //	defer cl.Close()
 //
-//	// Initialize an OCFL storage root
+//	// Initialize an OCFL storage root with live log callback
 //	resp, err := cl.Init(ctx, &pb.InitRequest{
 //	    OcflPath:    "/path/to/storage_root",
 //	    OcflVersion: "1.1",
 //	    Digest:      "sha512",
-//	})
+//	}, client.WithCallLogHandler(func(log *pb.LogEntry) {
+//	    fmt.Printf("[%s] %s\n", log.Level, log.Message)
+//	}))
 //
 //	// Add a new object
 //	addResp, err := cl.Add(ctx, &pb.AddRequest{

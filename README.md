@@ -6,12 +6,13 @@
 
 ## Features
 
-- **Standard OCFL Actions over gRPC**:
+- **Standard OCFL Actions over gRPC with Live Log Streaming**:
   - `Init`: Initialize a new OCFL storage root with configurable layout, digest algorithm, and extensions.
   - `Add`: Ingest an initial object version (`v1`) with metadata and user tracking.
   - `Update`: Append subsequent versions (`v2`, `v3`, ...) to an existing object with deduplication and area mapping.
   - `Create`: Initialize a storage root and ingest an initial object in a single operation.
   - `Validate`: Perform full conformance validation of storage roots or individual objects according to OCFL specs.
+  - **Real-Time Log Streaming**: All RPCs stream structured log entries (`LogEntry` with timestamp, level, message, raw JSON) directly to the client as events occur on the server.
 - **Virtual Filesystem (VFS) Abstraction**:
   - Supports local filesystems, zip containers as folders, and remote S3 object stores.
   - KeePass2 and KMS secret resolution for cloud credentials.
@@ -21,7 +22,9 @@
   - Content migration (`ext_NNNN_migration`).
   - Metafile management (`ext_NNNN_metafile`).
 - **Idiomatic Go Client Library (`pkg/client`)**:
-  - Simple client interface with fluent options (`WithInsecure()`, `WithTLS()`, `WithCertLoader()`, `WithLogger()`).
+  - Synchronous convenience methods with optional live log callbacks (`client.WithCallLogHandler(...)`).
+  - Raw streaming methods (`InitStream`, `AddStream`, `UpdateStream`, `CreateStream`, `ValidateStream`).
+  - Fluent connection options (`WithInsecure()`, `WithTLS()`, `WithCertLoader()`, `WithLogger()`).
 - **Production-Ready Server (`cmd/gocflgrpc`)**:
   - CLI flags, TOML configuration loading, gRPC reflection, and graceful shutdown handling.
   - Structured multi-target logging (Console, File, Logstash with TLS).
@@ -211,15 +214,28 @@ func main() {
 
 ## gRPC Protocol Reference
 
-The gRPC service `GocflService` provides five RPC methods:
+The gRPC service `GocflService` provides five server-streaming RPC methods:
 
 ```protobuf
 service GocflService {
-  rpc Init (InitRequest) returns (InitResponse);
-  rpc Add (AddRequest) returns (AddResponse);
-  rpc Update (UpdateRequest) returns (UpdateResponse);
-  rpc Create (CreateRequest) returns (CreateResponse);
-  rpc Validate (ValidateRequest) returns (ValidateResponse);
+  rpc Init (InitRequest) returns (stream InitResponse);
+  rpc Add (AddRequest) returns (stream AddResponse);
+  rpc Update (UpdateRequest) returns (stream UpdateResponse);
+  rpc Create (CreateRequest) returns (stream CreateResponse);
+  rpc Validate (ValidateRequest) returns (stream ValidateResponse);
+}
+```
+
+### Log Streaming & Message Structure
+
+Each streamed response message is a `oneof` payload containing either a real-time `LogEntry` or the final operation result:
+
+```protobuf
+message LogEntry {
+  int64 timestamp = 1;
+  string level = 2;
+  string message = 3;
+  string json_raw = 4;
 }
 ```
 
@@ -228,27 +244,27 @@ service GocflService {
 #### `Init`
 Initializes a new OCFL storage root at `ocfl_path`.
 - **Request (`InitRequest`)**: `ocfl_path`, `ocfl_version` (e.g. `"1.1"`), `digest` (e.g. `"sha512"`), `default_storageroot_extensions`, `extension_params`.
-- **Response (`InitResponse`)**: `success`, `message`.
+- **Response (`InitResponse`)**: Streams `LogEntry` messages followed by `InitResult` (`success`, `message`).
 
 #### `Add`
 Ingests an initial object version (`v1`) into an existing storage root.
 - **Request (`AddRequest`)**: `ocfl_path`, `object_id`, `src_path`, `message`, `user`, `digest`, `deduplicate`, `default_area`, `area_paths`, `default_object_extensions`, `extension_params`.
-- **Response (`AddResponse`)**: `success`, `message`, `object_id`, `version`.
+- **Response (`AddResponse`)**: Streams `LogEntry` messages followed by `AddResult` (`success`, `message`, `object_id`, `version`).
 
 #### `Update`
 Creates a subsequent version for an existing object in a storage root.
 - **Request (`UpdateRequest`)**: `ocfl_path`, `object_id`, `src_path`, `message`, `user`, `echo`, `deduplicate`, `area_paths`, `extension_params`.
-- **Response (`UpdateResponse`)**: `success`, `message`, `object_id`, `version`.
+- **Response (`UpdateResponse`)**: Streams `LogEntry` messages followed by `UpdateResult` (`success`, `message`, `object_id`, `version`).
 
 #### `Create`
 Initializes a storage root and adds an initial object in one operation.
 - **Request (`CreateRequest`)**: Combines parameters from `InitRequest` and `AddRequest`.
-- **Response (`CreateResponse`)**: `success`, `message`, `object_id`, `version`.
+- **Response (`CreateResponse`)**: Streams `LogEntry` messages followed by `CreateResult` (`success`, `message`, `object_id`, `version`).
 
 #### `Validate`
 Validates an entire storage root or a specific object path / object ID against the OCFL specifications.
 - **Request (`ValidateRequest`)**: `ocfl_path`, `object_id`, `object_path`, `extension_params`.
-- **Response (`ValidateResponse`)**: `is_valid`, `message`, `errors` (list of `ValidationError`), `warnings`.
+- **Response (`ValidateResponse`)**: Streams `LogEntry` messages followed by `ValidateResult` (`is_valid`, `message`, `errors` list of `ValidationError`, `warnings`).
 
 ---
 

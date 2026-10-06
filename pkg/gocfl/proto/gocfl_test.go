@@ -2,8 +2,10 @@ package proto_test
 
 import (
 	"context"
+	"io"
 	"net"
 	"testing"
+	"time"
 
 	pb "github.com/ocfl-archive/gocfl-grpc/pkg/gocfl/proto"
 	"google.golang.org/grpc"
@@ -16,45 +18,115 @@ type mockGocflServer struct {
 	pb.UnimplementedGocflServiceServer
 }
 
-func (s *mockGocflServer) Init(ctx context.Context, req *pb.InitRequest) (*pb.InitResponse, error) {
-	return &pb.InitResponse{
-		Success: true,
-		Message: "initialized " + req.GetOcflPath(),
-	}, nil
+func (s *mockGocflServer) Init(req *pb.InitRequest, stream pb.GocflService_InitServer) error {
+	_ = stream.Send(&pb.InitResponse{
+		Payload: &pb.InitResponse_Log{
+			Log: &pb.LogEntry{
+				Timestamp: time.Now().UnixNano(),
+				Level:     "info",
+				Message:   "initializing storage root",
+				JsonRaw:   `{"level":"info","message":"initializing storage root"}`,
+			},
+		},
+	})
+	return stream.Send(&pb.InitResponse{
+		Payload: &pb.InitResponse_Result{
+			Result: &pb.InitResult{
+				Success: true,
+				Message: "initialized " + req.GetOcflPath(),
+			},
+		},
+	})
 }
 
-func (s *mockGocflServer) Add(ctx context.Context, req *pb.AddRequest) (*pb.AddResponse, error) {
-	return &pb.AddResponse{
-		Success:  true,
-		Message:  "added object",
-		ObjectId: req.GetObjectId(),
-		Version:  "v1",
-	}, nil
+func (s *mockGocflServer) Add(req *pb.AddRequest, stream pb.GocflService_AddServer) error {
+	_ = stream.Send(&pb.AddResponse{
+		Payload: &pb.AddResponse_Log{
+			Log: &pb.LogEntry{
+				Timestamp: time.Now().UnixNano(),
+				Level:     "info",
+				Message:   "adding object " + req.GetObjectId(),
+				JsonRaw:   `{"level":"info","message":"adding object"}`,
+			},
+		},
+	})
+	return stream.Send(&pb.AddResponse{
+		Payload: &pb.AddResponse_Result{
+			Result: &pb.AddResult{
+				Success:  true,
+				Message:  "added object",
+				ObjectId: req.GetObjectId(),
+				Version:  "v1",
+			},
+		},
+	})
 }
 
-func (s *mockGocflServer) Update(ctx context.Context, req *pb.UpdateRequest) (*pb.UpdateResponse, error) {
-	return &pb.UpdateResponse{
-		Success:  true,
-		Message:  "updated object",
-		ObjectId: req.GetObjectId(),
-		Version:  "v2",
-	}, nil
+func (s *mockGocflServer) Update(req *pb.UpdateRequest, stream pb.GocflService_UpdateServer) error {
+	_ = stream.Send(&pb.UpdateResponse{
+		Payload: &pb.UpdateResponse_Log{
+			Log: &pb.LogEntry{
+				Timestamp: time.Now().UnixNano(),
+				Level:     "info",
+				Message:   "updating object " + req.GetObjectId(),
+				JsonRaw:   `{"level":"info","message":"updating object"}`,
+			},
+		},
+	})
+	return stream.Send(&pb.UpdateResponse{
+		Payload: &pb.UpdateResponse_Result{
+			Result: &pb.UpdateResult{
+				Success:  true,
+				Message:  "updated object",
+				ObjectId: req.GetObjectId(),
+				Version:  "v2",
+			},
+		},
+	})
 }
 
-func (s *mockGocflServer) Create(ctx context.Context, req *pb.CreateRequest) (*pb.CreateResponse, error) {
-	return &pb.CreateResponse{
-		Success:  true,
-		Message:  "created ocfl structure and initial object",
-		ObjectId: req.GetObjectId(),
-		Version:  "v1",
-	}, nil
+func (s *mockGocflServer) Create(req *pb.CreateRequest, stream pb.GocflService_CreateServer) error {
+	_ = stream.Send(&pb.CreateResponse{
+		Payload: &pb.CreateResponse_Log{
+			Log: &pb.LogEntry{
+				Timestamp: time.Now().UnixNano(),
+				Level:     "info",
+				Message:   "creating root and object " + req.GetObjectId(),
+				JsonRaw:   `{"level":"info","message":"creating root and object"}`,
+			},
+		},
+	})
+	return stream.Send(&pb.CreateResponse{
+		Payload: &pb.CreateResponse_Result{
+			Result: &pb.CreateResult{
+				Success:  true,
+				Message:  "created ocfl structure and initial object",
+				ObjectId: req.GetObjectId(),
+				Version:  "v1",
+			},
+		},
+	})
 }
 
-func (s *mockGocflServer) Validate(ctx context.Context, req *pb.ValidateRequest) (*pb.ValidateResponse, error) {
-	return &pb.ValidateResponse{
-		IsValid: true,
-		Message: "valid ocfl structure",
-	}, nil
+func (s *mockGocflServer) Validate(req *pb.ValidateRequest, stream pb.GocflService_ValidateServer) error {
+	_ = stream.Send(&pb.ValidateResponse{
+		Payload: &pb.ValidateResponse_Log{
+			Log: &pb.LogEntry{
+				Timestamp: time.Now().UnixNano(),
+				Level:     "info",
+				Message:   "validating structure",
+				JsonRaw:   `{"level":"info","message":"validating structure"}`,
+			},
+		},
+	})
+	return stream.Send(&pb.ValidateResponse{
+		Payload: &pb.ValidateResponse_Result{
+			Result: &pb.ValidateResult{
+				IsValid: true,
+				Message: "valid ocfl structure",
+			},
+		},
+	})
 }
 
 func TestGocflGRPCService(t *testing.T) {
@@ -91,12 +163,32 @@ func TestGocflGRPCService(t *testing.T) {
 		OcflVersion: "1.1",
 		Digest:      "sha512",
 	}
-	initResp, err := client.Init(ctx, initReq)
+	initStream, err := client.Init(ctx, initReq)
 	if err != nil {
-		t.Fatalf("Init failed: %v", err)
+		t.Fatalf("Init stream failed: %v", err)
 	}
-	if !initResp.GetSuccess() {
-		t.Errorf("Expected Init success, got false")
+	var initLogs []*pb.LogEntry
+	var initResult *pb.InitResult
+	for {
+		resp, err := initStream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("Init Recv failed: %v", err)
+		}
+		if l := resp.GetLog(); l != nil {
+			initLogs = append(initLogs, l)
+		}
+		if r := resp.GetResult(); r != nil {
+			initResult = r
+		}
+	}
+	if len(initLogs) == 0 {
+		t.Errorf("Expected at least 1 log entry from Init")
+	}
+	if initResult == nil || !initResult.GetSuccess() {
+		t.Errorf("Expected Init success, got %+v", initResult)
 	}
 
 	// Test Add
@@ -110,12 +202,25 @@ func TestGocflGRPCService(t *testing.T) {
 			Address: "mailto:jane@example.com",
 		},
 	}
-	addResp, err := client.Add(ctx, addReq)
+	addStream, err := client.Add(ctx, addReq)
 	if err != nil {
-		t.Fatalf("Add failed: %v", err)
+		t.Fatalf("Add stream failed: %v", err)
 	}
-	if addResp.GetObjectId() != "urn:test:1" {
-		t.Errorf("Expected object ID urn:test:1, got %s", addResp.GetObjectId())
+	var addResult *pb.AddResult
+	for {
+		resp, err := addStream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("Add Recv failed: %v", err)
+		}
+		if r := resp.GetResult(); r != nil {
+			addResult = r
+		}
+	}
+	if addResult == nil || addResult.GetObjectId() != "urn:test:1" {
+		t.Errorf("Expected object ID urn:test:1, got %+v", addResult)
 	}
 
 	// Test Update
@@ -129,12 +234,25 @@ func TestGocflGRPCService(t *testing.T) {
 			Address: "mailto:jane@example.com",
 		},
 	}
-	updateResp, err := client.Update(ctx, updateReq)
+	updateStream, err := client.Update(ctx, updateReq)
 	if err != nil {
-		t.Fatalf("Update failed: %v", err)
+		t.Fatalf("Update stream failed: %v", err)
 	}
-	if updateResp.GetVersion() != "v2" {
-		t.Errorf("Expected version v2, got %s", updateResp.GetVersion())
+	var updateResult *pb.UpdateResult
+	for {
+		resp, err := updateStream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("Update Recv failed: %v", err)
+		}
+		if r := resp.GetResult(); r != nil {
+			updateResult = r
+		}
+	}
+	if updateResult == nil || updateResult.GetVersion() != "v2" {
+		t.Errorf("Expected version v2, got %+v", updateResult)
 	}
 
 	// Test Create
@@ -149,24 +267,50 @@ func TestGocflGRPCService(t *testing.T) {
 			Address: "mailto:jane@example.com",
 		},
 	}
-	createResp, err := client.Create(ctx, createReq)
+	createStream, err := client.Create(ctx, createReq)
 	if err != nil {
-		t.Fatalf("Create failed: %v", err)
+		t.Fatalf("Create stream failed: %v", err)
 	}
-	if !createResp.GetSuccess() {
-		t.Errorf("Expected Create success, got false")
+	var createResult *pb.CreateResult
+	for {
+		resp, err := createStream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("Create Recv failed: %v", err)
+		}
+		if r := resp.GetResult(); r != nil {
+			createResult = r
+		}
+	}
+	if createResult == nil || !createResult.GetSuccess() {
+		t.Errorf("Expected Create success, got %+v", createResult)
 	}
 
 	// Test Validate
 	valReq := &pb.ValidateRequest{
 		OcflPath: "/tmp/test_ocfl",
 	}
-	valResp, err := client.Validate(ctx, valReq)
+	valStream, err := client.Validate(ctx, valReq)
 	if err != nil {
-		t.Fatalf("Validate failed: %v", err)
+		t.Fatalf("Validate stream failed: %v", err)
 	}
-	if !valResp.GetIsValid() {
-		t.Errorf("Expected IsValid true, got false")
+	var valResult *pb.ValidateResult
+	for {
+		resp, err := valStream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("Validate Recv failed: %v", err)
+		}
+		if r := resp.GetResult(); r != nil {
+			valResult = r
+		}
+	}
+	if valResult == nil || !valResult.GetIsValid() {
+		t.Errorf("Expected IsValid true, got %+v", valResult)
 	}
 
 	// Verify Protobuf Marshalling

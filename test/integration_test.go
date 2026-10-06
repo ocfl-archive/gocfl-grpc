@@ -395,3 +395,80 @@ func TestErrorScenarios(t *testing.T) {
 		}
 	})
 }
+
+func TestLiveLogStreamingIntegration(t *testing.T) {
+	server, addr := startIntegrationServer(t)
+	defer server.GracefulStop()
+
+	cl, err := client.NewClient(addr, client.WithInsecure())
+	require.NoError(t, err)
+	defer func() { _ = cl.Close() }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	tempDir := t.TempDir()
+	ocflRoot := filepath.ToSlash(filepath.Join(tempDir, "streaming_logs_root"))
+
+	var streamedLogs []*pb.LogEntry
+	var logMu sync.Mutex
+	logHandler := func(entry *pb.LogEntry) {
+		logMu.Lock()
+		defer logMu.Unlock()
+		streamedLogs = append(streamedLogs, entry)
+	}
+
+	// 1. Init with log handler
+	initResp, err := cl.Init(ctx, &pb.InitRequest{
+		OcflPath:    ocflRoot,
+		OcflVersion: "1.1",
+		Digest:      "sha512",
+	}, client.WithCallLogHandler(logHandler))
+	require.NoError(t, err)
+	assert.True(t, initResp.GetSuccess())
+
+	// 2. Add with raw stream to inspect log entries directly
+	srcDir := filepath.Join(tempDir, "src")
+	require.NoError(t, os.MkdirAll(srcDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(srcDir, "file.txt"), []byte("streaming log test content"), 0644))
+
+	addStream, err := cl.AddStream(ctx, &pb.AddRequest{
+		OcflPath: ocflRoot,
+		ObjectId: "urn:gocfl:streamed:1",
+		SrcPath:  filepath.ToSlash(srcDir),
+		Message:  "Testing stream logs",
+		User: &pb.User{
+			Name:    "Stream Tester",
+			Address: "mailto:stream@example.com",
+		},
+	})
+	require.NoError(t, err)
+
+	var addLogs []*pb.LogEntry
+	var addResult *pb.AddResult
+	for {
+		resp, err := addStream.Recv()
+		if err != nil {
+			break
+		}
+		if l := resp.GetLog(); l != nil {
+			addLogs = append(addLogs, l)
+		}
+		if r := resp.GetResult(); r != nil {
+			addResult = r
+		}
+	}
+
+	require.NotNil(t, addResult)
+	assert.True(t, addResult.GetSuccess())
+	assert.Equal(t, "urn:gocfl:streamed:1", addResult.GetObjectId())
+	assert.Equal(t, "v1", addResult.GetVersion())
+
+	// 3. Validate with log handler
+	valResp, err := cl.Validate(ctx, &pb.ValidateRequest{
+		OcflPath: ocflRoot,
+		ObjectId: "urn:gocfl:streamed:1",
+	}, client.WithCallLogHandler(logHandler))
+	require.NoError(t, err)
+	assert.True(t, valResp.GetIsValid())
+}
